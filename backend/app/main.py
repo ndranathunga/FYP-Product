@@ -1,12 +1,13 @@
 from fastapi import FastAPI, HTTPException, Body, Depends
-from fastapi.middleware.wsgi import WSGIMiddleware  # Use this again
+from fastapi.middleware.wsgi import WSGIMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import sys
 from pathlib import Path
 from loguru import logger
 
-# Ensure project root is in sys.path
+from fastapi.responses import RedirectResponse
+
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
 PROJECT_ROOT_FOR_MAIN = BACKEND_DIR.parent
@@ -25,7 +26,7 @@ from backend.app.prompts.prompt_engine import prompt_engine
 try:
     from frontend.dashboard.app import (
         app as dash_app_instance,
-    )  # This is the Dash app object
+    )
 
     DASH_CONFIGURED_URL_BASE_PATHNAME = dash_app_instance.config.url_base_pathname
     logger.info("Dash app instance imported successfully.")
@@ -41,12 +42,11 @@ except AttributeError:  # Should not happen if Dash app structure is correct
     dash_app_instance = None  # Treat as not loaded
     DASH_CONFIGURED_URL_BASE_PATHNAME = "N/A (Dash config error)"
 
-# This 'app' is the main FastAPI app that Uvicorn will run
 app = FastAPI(title="Customer Review Analysis API")
 logger.info("Main FastAPI application instance created.")
 
 
-# --- Pydantic Models --- (Same as before)
+# --- Pydantic Models ---
 class ReviewInput(BaseModel):
     text: str
 
@@ -60,7 +60,7 @@ class StatsResponse(BaseModel):
     stats: Optional[Dict[str, Any]] = None
 
 
-# --- Event Handlers for 'app' ---
+# --- Event Handlers ---
 @app.on_event("startup")
 async def startup_event():
     logger.info("FastAPI Event: Application startup initiated...")
@@ -68,7 +68,7 @@ async def startup_event():
     logger.info("FastAPI Event: Application startup complete.")
 
 
-# --- API Endpoints on 'app' --- (Same as before)
+# --- API Endpoints ---
 @app.post("/api/v1/analyze_review", response_model=AnalysisResult)
 async def analyze_review_endpoint(review: ReviewInput):
     logger.debug(f"API POST /api/v1/analyze_review with text: '{review.text[:50]}...'")
@@ -122,38 +122,6 @@ async def get_prompt_template_endpoint(prompt_name: str, version: Optional[str] 
     return {"prompt_name": prompt_name, "version": v, "template": prompt_str}
 
 
-# Test route (keep it for now)
-@app.get("/dashboard/test_fastapi_route")
-async def test_dashboard_prefix():
-    logger.info(
-        "FastAPI test route /dashboard/test_fastapi_route HIT (FastAPI.mount setup)!"
-    )
-    return {
-        "message": "FastAPI route under /dashboard prefix is working (FastAPI.mount setup)"
-    }
-
-
-# --- Mount Dash App ---
-if dash_app_instance and dash_app_instance.server:
-    # settings.frontend_base_url is "/dashboard"
-    # dash_app_instance.server is the Flask WSGI app
-    app.mount(
-        settings.frontend_base_url + "/",
-        WSGIMiddleware(dash_app_instance.server),
-        name="dash_app",
-    )
-    logger.info(
-        f"FastAPI: Dash app mounted at FastAPI path: '{settings.frontend_base_url}' using WSGIMiddleware."
-    )
-    logger.debug(
-        f"FastAPI: Dash app's internal url_base_pathname is: '{DASH_CONFIGURED_URL_BASE_PATHNAME}'"
-    )  # Should be /dashboard/
-else:
-    logger.error(
-        "FastAPI: Dash app server not available. Frontend will not be mounted."
-    )
-
-
 @app.get("/")
 async def root():
     logger.debug("API GET / (FastAPI root) called.")
@@ -166,3 +134,28 @@ async def root():
             else "Dashboard not available"
         ),
     }
+
+
+# --- Mount Dash App ---
+if dash_app_instance and dash_app_instance.server:
+    mount_path = settings.frontend_base_url.rstrip("/")  # + "/"
+    app.mount(
+        mount_path,
+        WSGIMiddleware(dash_app_instance.server),
+        name="dash_app",
+    )
+    logger.info(
+        f"FastAPI: Dash app mounted at FastAPI path: '{mount_path}' using WSGIMiddleware."
+    )
+    logger.debug(
+        f"FastAPI: Dash app's internal url_base_pathname is: '{DASH_CONFIGURED_URL_BASE_PATHNAME}'"
+    )  # Should be /dashboard/
+
+    @app.get(f"{mount_path}/", include_in_schema=False)
+    async def _dash_redirect():
+        return RedirectResponse(mount_path, status_code=307)
+
+else:
+    logger.error(
+        "FastAPI: Dash app server not available. Frontend will not be mounted."
+    )

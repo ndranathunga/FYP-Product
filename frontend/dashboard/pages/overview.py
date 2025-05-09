@@ -19,7 +19,11 @@ if str(PROJECT_ROOT_FOR_DASH_OVERVIEW) not in sys.path:
 try:
     from backend.app.config import settings as backend_settings_overview
 
-    API_BASE_URL = f"http://{backend_settings_overview.backend.host}:{backend_settings_overview.backend.port}/api/v1"
+    api_host = backend_settings_overview.backend.host
+    if api_host == "0.0.0.0":
+        api_host = "127.0.0.1"
+
+    API_BASE_URL = f"http://{api_host}:{backend_settings_overview.backend.port}/api/v1"
     logger.trace(
         f"Overview Page: API_BASE_URL set to {API_BASE_URL} from backend settings."
     )
