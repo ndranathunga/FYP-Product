@@ -1,0 +1,91 @@
+# ------------------------------------------------------------------------------
+#  Python -- compiled files, virtual-envs, packaging
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments / dependency managers
+.venv/
+venv/
+env/
+ENV/
+.env/
+.python-version # pyenv
+Pipfile.lock    # pip-tools / pipenv
+poetry.lock     # Poetry
+
+# Packaging / build artefacts
+build/
+dist/
+downloads/
+.eggs/
+*.egg-info/
+wheels/
+share/python-wheels/
+*.egg
+MANIFEST
+*.whl
+
+# ------------------------------------------------------------------------------
+#  Tooling & testing caches
+# ------------------------------------------------------------------------------
+.mypy_cache/
+.pytest_cache/
+.pyre/
+.tox/
+.hypothesis/
+.coverage*
+htmlcov/
+.dmypy.json
+ruff_cache/
+__pypackages__/
+
+# ------------------------------------------------------------------------------
+#  Logs & runtime output
+# ------------------------------------------------------------------------------
+*.log
+*.pid
+*.sqlite3
+*.db
+*.tmp
+
+# ------------------------------------------------------------------------------
+#  FastAPI / Dash specific
+# ------------------------------------------------------------------------------
+# Uvicorn/gunicorn reload artefacts
+*.reload
+# Uploaded media (if you collect to a local dir)
+media/
+# Static or compiled assets you don’t want under version control
+static/
+assets/*.map
+assets/*.js*
+assets/*.css*
+
+# ------------------------------------------------------------------------------
+#  Docker / container artefacts
+# ------------------------------------------------------------------------------
+*.tar
+*.img
+
+# ------------------------------------------------------------------------------
+#  Environment & secrets
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.key
+*.pem
+
+# ------------------------------------------------------------------------------
+#  Editor / OS noise
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+backend/app/data/

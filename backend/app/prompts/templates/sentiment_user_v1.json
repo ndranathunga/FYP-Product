@@ -1,0 +1,6 @@
+{
+  "name": "sentiment_user",
+  "version": "v1",
+  "type": "user",
+  "template": "Please analyze the sentiment of the following customer review and assign a star rating (1-5 stars):\n\nReview: \"{review_text}\"\n\nStar Rating:"
+}

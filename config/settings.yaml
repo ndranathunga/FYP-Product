@@ -1,0 +1,45 @@
+backend:
+  host: "0.0.0.0"
+  port: 8000
+  # Paths are relative to the project root
+  cache_dir: "backend/app/data/cache"
+  dataset_path: "backend/app/data/sample_reviews.csv"
+  results_cache_file: "analysis_results.json"
+  force_reanalyze_on_startup: false
+
+models:
+  sentiment:
+    type: "local" # or "api"
+    class: "LocalSentimentModel" # Explicit class name from <type>_models.py
+    # endpoint: "http://your_sentiment_api_endpoint/predict"
+    # api_key: null
+  language:
+    type: "local" # or "api"
+    class: "LocalLanguageModel" # Explicit class name
+    # endpoint: "http://your_language_api_endpoint/detect"
+
+prompts:
+  engine:
+    template_dir: "backend/app/prompts/templates"
+    default_version: "v1"
+
+frontend_base_url: "/dashboard"
+
+logging:
+  level: "INFO" # Global log level: TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL
+
+  # Console Handler
+  console_enabled: true
+  console_level: "DEBUG" # Level for console output specifically
+
+  # File Handler
+  file_enabled: true
+  file_path: "logs/app.log"
+  file_level: "TRACE"
+  rotation: "10 MB" # e.g., "500 MB", "00:00" (daily), "1 week"
+  retention: "7 days" # e.g., "10 files", "3 months"
+
+  # Loguru format string
+  # Default: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+  # Simpler: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {message}"
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"

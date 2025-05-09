@@ -1,0 +1,11 @@
+/* Custom CSS for Dash app */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa; /* Light gray background */
+}
+
+.card-title {
+    color: #0056b3; /* Darker blue for titles */
+}
+
+/* You can add more specific styles here */
