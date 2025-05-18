@@ -1,11 +1,15 @@
 import yaml
+import os
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-from backend.app.core.logging_config import setup_logging  
+from backend.app.core.logging_config import setup_logging
+
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
 
 class ModelConfig(BaseModel):
@@ -29,7 +33,7 @@ class PromptsConfig(BaseModel):
     engine: PromptsEngineConfig
 
 
-class LoggingConfig(BaseModel): 
+class LoggingConfig(BaseModel):
     level: str = "INFO"
     console_enabled: bool = True
     console_level: str = "DEBUG"
@@ -52,12 +56,37 @@ class BackendConfig(BaseModel):
     force_reanalyze_on_startup: bool = False
 
 
+class DatabaseConfig(BaseModel):
+    user: str = Field(default_factory=lambda: os.environ.get("user", ""))
+    password: str = Field(default_factory=lambda: os.environ.get("password", ""))
+    host: str = Field(default_factory=lambda: os.environ.get("host", ""))
+    port: str = Field(default_factory=lambda: os.environ.get("port", "5432"))
+    dbname: str = Field(default_factory=lambda: os.environ.get("dbname", ""))
+
+
+class JWTConfig(BaseModel):
+    secret_key: str = Field(
+        default_factory=lambda: os.environ.get("jwt_secret_key", "")
+    )
+    algorithm: str = Field(
+        default_factory=lambda: os.environ.get("jwt_algorithm", "HS256")
+    )
+    access_token_expire_minutes: int = Field(
+        default_factory=lambda: os.environ.get(
+            "jwt_access_token_expire_minutes", 60 * 24
+        )
+    )  # 1 day
+
+
 class Settings(BaseModel):
     backend: BackendConfig
     models: ModelsConfig
+    database: DatabaseConfig
+    jwt: JWTConfig
+
     prompts: PromptsConfig
     frontend_base_url: str
-    logging: LoggingConfig 
+    logging: LoggingConfig
 
 
 def load_config() -> Settings:
@@ -75,6 +104,10 @@ def load_config() -> Settings:
     config_data["prompts"]["engine"]["template_dir"] = str(
         PROJECT_ROOT / config_data["prompts"]["engine"]["template_dir"]
     )
+    config_data["database"] = {}
+    config_data["jwt"] = {}
+    
+    print()
 
     loaded_settings = Settings(**config_data)
 
@@ -83,13 +116,7 @@ def load_config() -> Settings:
     return loaded_settings
 
 
-settings = load_config()  
+settings = load_config()
 
 # Ensure cache directory exists at runtime
 Path(settings.backend.cache_dir).mkdir(parents=True, exist_ok=True)
-
-# TODO: Remove this after testing
-from loguru import logger
-
-logger.debug(f"Configuration loaded. Project Root: {PROJECT_ROOT}")
-logger.info(f"Frontend base URL configured: {settings.frontend_base_url}")

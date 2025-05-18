@@ -1,10 +1,10 @@
-from dash import html, dcc, callback, Input, Output, State  
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 import httpx
 import json
 import sys
 from pathlib import Path
-from loguru import logger  
+from loguru import logger
 
 DASH_TESTING_DIR = Path(__file__).resolve().parent
 DASH_APP_DIR_T = DASH_TESTING_DIR.parent
@@ -72,9 +72,10 @@ layout = dbc.Container(
     Output("analysis-output-display-testing", "children"),
     Input("analyze-button-testing", "n_clicks"),
     State("review-input-text-testing", "value"),
+    State("jwt-token-store", "data"),
     prevent_initial_call=True,
 )
-def handle_analyze_review_testing(n_clicks, review_text):
+def handle_analyze_review_testing(n_clicks, review_text, jwt_token):
     logger.debug(
         f"Analyze review button clicked (n_clicks: {n_clicks}). Review text length: {len(review_text) if review_text else 0}"
     )
@@ -82,13 +83,20 @@ def handle_analyze_review_testing(n_clicks, review_text):
         logger.info("Analyze review: No review text entered.")
         return dbc.Alert("Please enter some review text to analyze.", color="warning")
 
+    headers = {}
+    if jwt_token:
+        headers["Authorization"] = f"Bearer {jwt_token}"
+
     try:
         payload = {"text": review_text}
         logger.trace(
             f"Sending POST request to {API_BASE_URL}/analyze_review with payload: {payload}"
         )
         response = httpx.post(
-            f"{API_BASE_URL}/analyze_review", json=payload, timeout=15.0
+            f"{API_BASE_URL}/analyze_review",
+            json=payload,
+            headers=headers,
+            timeout=15.0,
         )
         logger.trace(
             f"API response status code: {response.status_code} for /analyze_review"

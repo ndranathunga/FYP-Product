@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sign Up</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="auth-container">
+      <h2>Sign Up</h2>
+      <form id="signup-form">
+        <input
+          type="email"
+          id="signup-email"
+          name="email"
+          placeholder="Email"
+          required
+        />
+        <input
+          type="password"
+          id="signup-password"
+          name="password"
+          placeholder="Password"
+          required
+        />
+        <input
+          type="text"
+          id="org_name"
+          name="org_name"
+          placeholder="Organization Name"
+          required
+        />
+        <button type="submit">Sign Up</button>
+      </form>
+      <div id="signup-msg"></div>
+      <p>Already have an account? <a href="login.html">Sign In</a></p>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>

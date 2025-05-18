@@ -19,7 +19,7 @@ def setup_logging(logging_settings, project_root: Path):
             format=log_format,
             colorize=True,
         )
-        logger.info("Console logging enabled.")
+        logger.trace("Console logging enabled.")
 
     # File Handler
     if logging_settings.get("file_enabled", True):
@@ -40,10 +40,10 @@ def setup_logging(logging_settings, project_root: Path):
             backtrace=True,  # Better tracebacks
             diagnose=True,  # More detailed error reporting
         )
-        logger.info(
+        logger.trace(
             f"File logging enabled. Path: {log_file_path}, Level: {logging_settings.get('file_level', 'INFO').upper()}"
         )
 
-    logger.info(
+    logger.trace(
         f"Logging setup complete. Global default level (for filtering if no handler matches): {logging_settings.get('level', 'INFO').upper()}"
     )

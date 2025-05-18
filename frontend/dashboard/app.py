@@ -60,7 +60,7 @@ except ImportError as e:
             print(f"Dash App (standalone): Failed to set up minimal logging: {log_e}")
 
 
-from .pages import overview, testing 
+from .pages import overview, testing
 from .layout import app_layout_definition
 
 
@@ -74,6 +74,18 @@ app = dash.Dash(
     requests_pathname_prefix=DASH_INTERNAL_URL_BASE,
     assets_folder=str(Path(__file__).parent / "assets"),
 )
+
+app.clientside_callback(
+    """
+    function(pathname) {
+        return window.localStorage.getItem('access_token') || '';
+    }
+    """,
+    Output("jwt-token-store", "data"),
+    Input("url", "pathname"),  # triggers on every navigation/page load
+)
+
+
 app.title = "Customer Review Analysis Dashboard"
 server = app.server
 

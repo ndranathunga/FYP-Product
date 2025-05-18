@@ -146,8 +146,9 @@ def create_placeholder_figure(message="Loading data..."):
         Input("refresh-stats-button-overview", "n_clicks"),
         Input("interval-component-overview", "n_intervals"),
     ],
+    State("jwt-token-store", "data"),
 )
-def fetch_stats_data_overview(n_clicks, n_intervals):
+def fetch_stats_data_overview(n_clicks, n_intervals, jwt_token):
     triggered_by = (
         callback_context.triggered_id
         if callback_context.triggered_id
@@ -156,8 +157,13 @@ def fetch_stats_data_overview(n_clicks, n_intervals):
     logger.debug(
         f"Fetching stats data. Triggered by: {triggered_by}, N_clicks: {n_clicks}, Interval: {n_intervals}"
     )
+    
+    headers = {}
+    if jwt_token:
+        headers["Authorization"] = f"Bearer {jwt_token}"
+        
     try:
-        response = httpx.get(f"{API_BASE_URL}/stats", timeout=10.0)
+        response = httpx.get(f"{API_BASE_URL}/stats", headers=headers, timeout=10.0)
         logger.trace(f"API response status code: {response.status_code} for /stats")
         if response.status_code == 202:
             loading_message = response.json().get("detail", "Stats are loading...")

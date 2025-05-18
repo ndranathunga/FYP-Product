@@ -34,6 +34,7 @@ app_layout_definition = html.Div(
     [
         dcc.Location(id="url", refresh=False),
         navbar,
-        dbc.Container(id="page-content", fluid=True),  # Page content rendered here
+        dbc.Container(id="page-content", fluid=True),
+        dcc.Store(id="jwt-token-store", storage_type="local"),
     ]
 )

@@ -25,10 +25,6 @@ prompts:
 
 frontend_base_url: "/dashboard"
 
-supabase:
-  url: "https://YOUR_PROJECT_ID.supabase.co"
-  service_key: "YOUR_SUPABASE_SERVICE_ROLE_KEY"
-
 logging:
   level: "INFO" # Global log level: TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL
 

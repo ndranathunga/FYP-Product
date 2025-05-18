@@ -1,12 +1,25 @@
-from fastapi import FastAPI, HTTPException, Body, Depends
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
-from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from fastapi import FastAPI, HTTPException, Body, Depends
+
 import sys
 from pathlib import Path
 from loguru import logger
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
 
-from fastapi.responses import RedirectResponse
+from backend.app.config import settings
+from backend.app.auth.deps import get_current_user
+from backend.app.auth.auth_routes import auth_router
+from backend.app.prompts.prompt_engine import prompt_engine
+from backend.app.services.model_service import model_service
+from backend.app.services.analysis_service import (
+    initialize_analysis_service,
+    get_analysis_service,
+    AnalysisService,
+)
+
 
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
@@ -14,14 +27,6 @@ PROJECT_ROOT_FOR_MAIN = BACKEND_DIR.parent
 if str(PROJECT_ROOT_FOR_MAIN) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT_FOR_MAIN))
 
-from backend.app.config import settings
-from backend.app.services.model_service import model_service
-from backend.app.services.analysis_service import (
-    initialize_analysis_service,
-    get_analysis_service,
-    AnalysisService,
-)
-from backend.app.prompts.prompt_engine import prompt_engine
 
 try:
     from frontend.dashboard.app import (
@@ -69,8 +74,30 @@ async def startup_event():
 
 
 # --- API Endpoints ---
+app.include_router(auth_router)
+
+
+@app.get("/auth/signup", include_in_schema=False)
+@app.get("/auth/signup/", include_in_schema=False)
+async def signup_html_redirect():
+    return RedirectResponse(url="/auth/signup.html")
+
+
+@app.get("/auth/login", include_in_schema=False)
+@app.get("/auth/login/", include_in_schema=False)
+async def signup_html_redirect():
+    return RedirectResponse(url="/auth/login.html")
+
+
+app.mount(
+    "/auth", StaticFiles(directory="frontend/auth", html=True), name="auth-static"
+)
+
+
 @app.post("/api/v1/analyze_review", response_model=AnalysisResult)
-async def analyze_review_endpoint(review: ReviewInput):
+async def analyze_review_endpoint(
+    review: ReviewInput, current_user=Depends(get_current_user)
+):
     logger.debug(f"API POST /api/v1/analyze_review with text: '{review.text[:50]}...'")
     if not model_service.language_model or not model_service.sentiment_model:
         logger.error("Models not available for /api/v1/analyze_review")
@@ -83,6 +110,7 @@ async def analyze_review_endpoint(review: ReviewInput):
 @app.get("/api/v1/stats", response_model=StatsResponse)
 async def get_statistics_endpoint(
     analysis_svc: AnalysisService = Depends(get_analysis_service),
+    current_user=Depends(get_current_user),
 ):
     logger.debug("API GET /api/v1/stats called")
     stats_data = analysis_svc.get_stats()
@@ -104,6 +132,7 @@ async def get_statistics_endpoint(
 @app.post("/api/v1/trigger_reanalysis", response_model=StatsResponse)
 async def trigger_reanalysis_endpoint(
     analysis_svc: AnalysisService = Depends(get_analysis_service),
+    current_user=Depends(get_current_user),
 ):
     logger.info("API POST /api/v1/trigger_reanalysis called.")
     new_stats = await analysis_svc.run_full_analysis()
