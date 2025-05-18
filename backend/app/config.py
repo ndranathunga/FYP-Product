@@ -50,10 +50,6 @@ class LoggingConfig(BaseModel):
 class BackendConfig(BaseModel):
     host: str
     port: int
-    cache_dir: str
-    dataset_path: str
-    results_cache_file: str
-    force_reanalyze_on_startup: bool = False
 
 
 class DatabaseConfig(BaseModel):
@@ -95,12 +91,6 @@ def load_config() -> Settings:
     with open(config_file_path, "r") as f:
         config_data = yaml.safe_load(f)
 
-    config_data["backend"]["cache_dir"] = str(
-        PROJECT_ROOT / config_data["backend"]["cache_dir"]
-    )
-    config_data["backend"]["dataset_path"] = str(
-        PROJECT_ROOT / config_data["backend"]["dataset_path"]
-    )
     config_data["prompts"]["engine"]["template_dir"] = str(
         PROJECT_ROOT / config_data["prompts"]["engine"]["template_dir"]
     )
@@ -117,6 +107,3 @@ def load_config() -> Settings:
 
 
 settings = load_config()
-
-# Ensure cache directory exists at runtime
-Path(settings.backend.cache_dir).mkdir(parents=True, exist_ok=True)
