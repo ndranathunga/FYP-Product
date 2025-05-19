@@ -16,3 +16,4 @@ python-dotenv
 psycopg2
 passlib[bcrypt]
 python-jose[cryptography]
+cachetools

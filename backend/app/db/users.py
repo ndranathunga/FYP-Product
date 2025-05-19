@@ -1,15 +1,30 @@
-from backend.app.db.connection import fetch_one, fetch_all, execute_query
+import uuid
+from typing import Optional
+
+from .connection import fetch_one, execute_query
+from .schemas import UserInDB
 
 
-def get_user_by_email(email):
+def get_user_by_email(email: str) -> Optional[UserInDB]:
     query = "SELECT * FROM users WHERE email = %s"
-    return fetch_one(query, (email,))
+    user_data = fetch_one(query, (email,))
+
+    return UserInDB.model_validate(user_data) if user_data else None
 
 
-def create_user(email, password_hash, org_name):
+def get_user_by_id(user_id: uuid.UUID) -> Optional[UserInDB]:
+    query = "SELECT * FROM users WHERE id = %s"
+    user_data = fetch_one(query, (user_id,))
+
+    return UserInDB.model_validate(user_data) if user_data else None
+
+
+def create_user(email: str, password_hash: str, org_name: str) -> UserInDB:
     query = """
-        INSERT INTO users (email, password_hash, org_name)
-        VALUES (%s, %s, %s)
-        RETURNING id, email, org_name
+    INSERT INTO users (email, password_hash, org_name)
+    VALUES (%s, %s, %s)
+    RETURNING id, email, password_hash, org_name, created_at
     """
-    return fetch_one(query, (email, password_hash, org_name))
+    user_data = fetch_one(query, (email, password_hash, org_name))
+
+    return UserInDB.model_validate(user_data)

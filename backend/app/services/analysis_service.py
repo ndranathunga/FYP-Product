@@ -1,3 +1,4 @@
+import uuid
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -6,184 +7,191 @@ import asyncio
 from loguru import logger
 
 from ..config import settings
+from ..core import memory_cache as caching
 from .model_service import model_service
-from ..core import caching
-
 from ..prompts.prompt_engine import prompt_engine
+
+from ..db import reviews as db_reviews
+from ..db import products as db_products
+from ..db import analysis_results as db_analysis_results
+from ..db.schemas import (
+    Review as DBReviewSchema,
+    AnalysisResultCreate,
+    AnalysisResultItem,
+)
 
 
 class AnalysisService:
     def __init__(self):
-        logger.info("Initializing AnalysisService...")
-        self.dataset_path = Path(settings.backend.dataset_path)
-        self.cache_file_name = settings.backend.results_cache_file
-        self.stats: Optional[Dict[str, Any]] = None
-        logger.debug(
-            f"Dataset path: {self.dataset_path}, Cache file name: {self.cache_file_name}"
-        )
+        logger.trace("Initializing AnalysisService...")
 
-    async def _load_or_generate_stats_async(self):
-        logger.debug("AnalysisService: Attempting to load or generate stats...")
-        if not settings.backend.force_reanalyze_on_startup:
-            self.stats = caching.load_cache(self.cache_file_name)
-            if self.stats:
-                logger.info("Analysis stats loaded from cache.")
-
-        if not self.stats:
-            if settings.backend.force_reanalyze_on_startup:
-                logger.info("Forcing re-analysis of dataset on startup.")
-            else:
-                logger.info("Cache not found. Starting full analysis of dataset.")
-            self.stats = await self.run_full_analysis()
-        else:
-            logger.debug("Stats were available, no generation needed.")
-
-    def get_dataset_reviews(self) -> Optional[List[Dict[str, Any]]]:
-        logger.debug(f"Attempting to load dataset from: {self.dataset_path}")
-        if not self.dataset_path.exists():
-            logger.warning(
-                f"Dataset file not found: {self.dataset_path}. Creating dummy dataset."
-            )
-            dummy_data = {
-                "review_id": [i for i in range(1, 11)],
-                "product_id": [f"P10{i%5}" for i in range(10)],
-                "review_text": [
-                    "This is a fantastic product! Loved it.",
-                    "Le produit est horrible, ne fonctionne pas.",
-                    "Not bad, but could be better.",
-                    "¡Excelente servicio y entrega rápida!",
-                    "Ziemlich gut, aber der Kundenservice war langsam.",
-                    "Happy with purchase.",
-                    "Terrible quality, broke immediately.",
-                    "Fantastique! Je recommande.",
-                    "It's okay, nothing special.",
-                    "Me encanta este producto, es genial.",
-                ],
-            }
-            try:
-                df_dummy = pd.DataFrame(dummy_data)
-                self.dataset_path.parent.mkdir(parents=True, exist_ok=True)
-                df_dummy.to_csv(self.dataset_path, index=False)
-                logger.info(f"Created dummy dataset at: {self.dataset_path}")
-            except Exception as e:
-                logger.error(f"Could not create dummy dataset: {e}", exc_info=True)
-                return None
+    async def analyze_and_store_review(
+        self, review: DBReviewSchema, user_id: uuid.UUID
+    ) -> Optional[AnalysisResultItem]:
+        logger.trace(f"Analyzing review ID: {review.id} for user: {user_id}")
         try:
-            df = pd.read_csv(self.dataset_path)
-            if "review_text" not in df.columns:
-                logger.error("Dataset error: 'review_text' column not found.")
+            lang_result = await model_service.get_language(review.review_text)
+            sentiment_result = await model_service.get_sentiment(review.review_text)
+
+            if (
+                not lang_result
+                or lang_result.get("error")
+                or not sentiment_result
+                or sentiment_result.get("error")
+            ):
+                logger.error(
+                    f"Model prediction failed for review {review.id}. Lang: {lang_result}, Sent: {sentiment_result}"
+                )
                 return None
-            logger.info(f"Dataset loaded successfully with {len(df)} reviews.")
 
-            return df.to_dict("records")
+            #! FIXME: This is a placeholder for the actual logic to create an analysis result.
+            analysis_create_data = AnalysisResultCreate(
+                review_id=review.id,
+                language=lang_result.get("language"),
+                sentiment=sentiment_result.get(
+                    "stars"
+                ),  # Assuming 'stars' is the sentiment score
+                confidence=sentiment_result.get(
+                    "confidence"
+                ),  # Or combine lang/sent confidence
+                result_json={
+                    "language_model_output": lang_result,
+                    "sentiment_model_output": sentiment_result,
+                },
+            )
+
+            stored_analysis = db_analysis_results.create_analysis_result_db(
+                analysis_create_data
+            )
+
+            if stored_analysis:
+                logger.success(
+                    f"Analysis for review {review.id} stored/updated: {stored_analysis.id}"
+                )
+                # Invalidate this user's stats cache as new data is available
+                cache_key = f"stats_{user_id}"
+                if cache_key in caching.user_stats_cache:
+                    try:
+                        del caching.user_stats_cache[cache_key]
+                        logger.debug(
+                            f"Invalidated stats cache for user {user_id} due to new analysis for review {review.id}."
+                        )
+                    except KeyError:  # pragma: no cover
+                        logger.warning(
+                            f"Cache key {cache_key} already removed for user {user_id}, possibly by another concurrent task."
+                        )
+                return stored_analysis
+            else:  # pragma: no cover
+                logger.error(
+                    f"Failed to store analysis for review {review.id} after model prediction."
+                )
+                return None
+
         except Exception as e:
-            logger.error(f"Error loading dataset: {e}", exc_info=True)
-
+            logger.error(
+                f"Exception during analysis/storage for review {review.id}: {e}",
+                exc_info=True,
+            )
             return None
 
-    async def run_full_analysis(self) -> Dict[str, Any]:
-        logger.info("Starting full dataset analysis...")
-        reviews = self.get_dataset_reviews()
+    async def run_bulk_analysis_for_user(self, user_id: uuid.UUID) -> Dict[str, Any]:
+        logger.trace(f"Starting bulk analysis for user_id: {user_id}...")
+        user_reviews = db_reviews.get_all_reviews_for_user_db(user_id)
 
-        if not reviews:
-            logger.error("Cannot run analysis, dataset could not be loaded.")
-
-            return {"error": "Could not load reviews from dataset."}
-
-        processed_reviews_data = []
-        language_counts = Counter()
-        sentiment_counts = Counter()
-        sentiment_by_language = {}
+        if not user_reviews:
+            logger.warning(f"No reviews found for user {user_id} to analyze.")
+            return await self.get_user_stats(user_id)
 
         tasks = []
-        for review_data in reviews:
-            text = review_data.get("review_text", "")
-            if text:
-                tasks.append(self._process_single_review(review_data, text))
-            else:
-                logger.warning(
-                    f"Skipping review with empty text. ID: {review_data.get('review_id', 'N/A')}"
-                )
+        for review_obj in user_reviews:
+            tasks.append(self.analyze_and_store_review(review_obj, user_id))
 
-        logger.info(f"Processing {len(tasks)} reviews concurrently...")
+        logger.info(
+            f"Processing {len(tasks)} reviews concurrently for user {user_id}..."
+        )
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         successful_processing_count = 0
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
+        failed_processing_count = 0
+        for i, result_item in enumerate(results):
+            if isinstance(result_item, Exception):  # pragma: no cover
                 logger.error(
-                    f"Error processing review (index {i}): {result}", exc_info=result
+                    f"Error processing review task (index {i}) for user {user_id}: {result_item}",
+                    exc_info=result_item,
                 )
-                # Optionally store info about failed review
-                continue
-            if result:
-                processed_reviews_data.append(result["processed_review"])
-                language_counts[result["lang"]] += 1
-                if result["stars"] > 0:
-                    sentiment_counts[result["stars"]] += 1
-                    if result["lang"] not in sentiment_by_language:
-                        sentiment_by_language[result["lang"]] = Counter()
-                    sentiment_by_language[result["lang"]][result["stars"]] += 1
+                failed_processing_count += 1
+            elif result_item:  # If an AnalysisResultItem was returned
                 successful_processing_count += 1
+            else:
+                failed_processing_count += 1
 
         logger.info(
-            f"Successfully processed {successful_processing_count}/{len(tasks)} reviews."
+            f"Bulk analysis for user {user_id}: Successfully processed {successful_processing_count}/{len(tasks)} reviews. Failed: {failed_processing_count}."
         )
 
-        overall_stats = {
-            "total_reviews_processed": successful_processing_count,
-            "total_reviews_in_dataset": len(reviews),
-            "language_distribution": dict(language_counts),
-            "overall_sentiment_distribution": dict(sentiment_counts),
-            "sentiment_distribution_by_language": {
-                lang: dict(counts) for lang, counts in sentiment_by_language.items()
-            },
-        }
+        return await self.get_user_stats(user_id)
 
-        caching.save_cache(overall_stats, self.cache_file_name)
-        self.stats = overall_stats
-        logger.success("Full analysis complete and stats cached.")
-        return overall_stats
-
-    async def _process_single_review(
-        self, review_data: Dict, text: str
-    ) -> Optional[Dict]:
-        review_id = review_data.get("review_id", "N/A")
-        logger.trace(f"Processing review ID: {review_id}, Text: '{text[:30]}...'")
+    async def get_user_stats(self, user_id: uuid.UUID) -> Dict[str, Any]:
+        cache_key = f"stats_{user_id}"
         try:
-            lang_result = await model_service.get_language(text)
-            sentiment_result = await model_service.get_sentiment(text)
+            cached_stats = caching.user_stats_cache[cache_key]
+            logger.debug(f"Returning cached stats for user {user_id}")
+            return cached_stats
+        except KeyError:
+            logger.trace(f"No cache found for user {user_id}. Computing stats from DB.")
+            pass  # Cache miss, proceed to compute
 
-            lang = lang_result.get("language", "unknown") if lang_result else "unknown"
-            stars = sentiment_result.get("stars", 0) if sentiment_result else 0
-
-            processed_review = {
-                "review_id": review_id,
-                "text_preview": text[:50] + "...",
-                "detected_language": lang,
-                "predicted_sentiment_stars": stars,
-            }
-            logger.trace(
-                f"Review ID {review_id} processed. Lang: {lang}, Stars: {stars}"
+        try:
+            total_processed = (
+                db_analysis_results.get_total_reviews_processed_for_user_db(user_id)
             )
-            return {"processed_review": processed_review, "lang": lang, "stars": stars}
-        except Exception as e:
+            total_in_dataset = (
+                db_analysis_results.get_total_reviews_in_dataset_for_user_db(user_id)
+            )
+
+            summary_data = db_analysis_results.get_user_stats_summary_db(user_id)
+
+            # TODO: Proper analysis implementation here
+            language_counts = Counter()
+            overall_sentiment_counts = (
+                Counter()
+            )  # Stores counts for each sentiment value (e.g., stars)
+            sentiment_by_language = {}  # lang -> Counter(sentiment_value -> count)
+
+            for row in summary_data:
+                lang = row.get("language")
+                sentiment_val = row.get("sentiment")  # This is the 'stars' (integer)
+                count = row.get("count", 0)
+
+                if lang:  # Only count if language is present
+                    language_counts[lang] += count
+
+                if sentiment_val is not None:  # Ensure sentiment is not NULL
+                    overall_sentiment_counts[
+                        str(sentiment_val)
+                    ] += count  # Convert sentiment to string for consistent dict keys
+                    if lang:  # Only add to sentiment_by_language if language is present
+                        if lang not in sentiment_by_language:
+                            sentiment_by_language[lang] = Counter()
+                        sentiment_by_language[lang][str(sentiment_val)] += count
+
+            stats = {
+                "total_reviews_processed": total_processed,
+                "total_reviews_in_dataset": total_in_dataset,
+                "language_distribution": dict(language_counts),
+                "overall_sentiment_distribution": dict(overall_sentiment_counts),
+                "sentiment_distribution_by_language": {
+                    lang: dict(counts) for lang, counts in sentiment_by_language.items()
+                },
+            }
+            caching.user_stats_cache[cache_key] = stats
+            logger.success(f"Computed and cached stats for user {user_id}")
+            return stats
+        except Exception as e:  # pragma: no cover
             logger.error(
-                f"Exception while processing single review ID {review_id}: {e}",
-                exc_info=True,
+                f"Error computing stats for user {user_id}: {e}", exc_info=True
             )
-            # This exception will be caught by asyncio.gather if return_exceptions=True
-            raise  # Or return None / error structure
-
-    def get_stats(self) -> Optional[Dict[str, Any]]:
-        if not self.stats:
-            logger.warning("Stats requested but not yet available/generated.")
-            return {
-                "status": "loading",
-                "message": "Statistics are being generated or loaded. Please try again shortly.",
-            }
-        logger.debug("Stats retrieved from AnalysisService instance.")
-        return self.stats
+            return {"error": f"Could not compute stats for user {user_id}: {str(e)}"}
 
 
 _analysis_service_instance: Optional[AnalysisService] = None
@@ -191,14 +199,15 @@ _analysis_service_instance: Optional[AnalysisService] = None
 
 async def initialize_analysis_service():
     global _analysis_service_instance
+
     logger.debug("Attempting to initialize AnalysisService...")
     if _analysis_service_instance is None:
-        logger.info("AnalysisService instance not found, creating new one.")
+        logger.debug("AnalysisService instance not found, creating new one.")
         _analysis_service_instance = AnalysisService()
-        await _analysis_service_instance._load_or_generate_stats_async()
-        logger.success("AnalysisService initialized and stats loaded/generated.")
+        logger.trace("AnalysisService initialized.")
     else:
         logger.debug("AnalysisService instance already exists.")
+
     return _analysis_service_instance
 
 

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from jose import jwt, JWTError
 import os
 
-from app.config import settings
+from ..config import settings
 
 # Ideally, load these from your config/env!
 SECRET_KEY = settings.jwt.secret_key
