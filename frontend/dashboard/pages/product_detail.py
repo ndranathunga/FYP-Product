@@ -5,6 +5,7 @@ from dash import (
     Input,
     Output,
     State,
+    callback_context,
 )
 from dash.exceptions import PreventUpdate
 import dash
@@ -13,6 +14,7 @@ import httpx
 from loguru import logger
 from pathlib import Path
 import sys
+import json
 
 DASH_OVERVIEW_DIR = Path(__file__).resolve().parent
 DASH_APP_DIR_O = DASH_OVERVIEW_DIR.parent
@@ -89,9 +91,7 @@ def layout(product_id=None):
 
     return dbc.Container(
         [
-            dcc.Store(
-                id="pdetail-product-id-store", data=product_id
-            ),  # Store the product ID
+            dcc.Store(id="pdetail-product-id-store", data=product_id),
             dbc.Row(
                 [
                     dbc.Col(html.H3(id="pdetail-product-name", className="mt-3"), md=9),
@@ -109,19 +109,37 @@ def layout(product_id=None):
             html.P(id="pdetail-product-description", className="lead"),
             html.Hr(),
             html.H4("Reviews for this Product", className="mt-4 mb-3"),
-            dbc.Button(
-                "Add New Review",
-                id="add-review-open-modal-button",
-                color="success",
-                className="mb-3",
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Button(
+                            "Add New Review",
+                            id="add-review-open-modal-button",
+                            color="success",
+                            className="mb-3 me-2",
+                        ),
+                        width="auto",
+                    ),
+                    dbc.Col(
+                        dbc.Button(  # MODIFIED LINE HERE
+                            [
+                                html.I(className="fas fa-sync-alt me-1"),
+                                " Refresh Reviews",
+                            ],
+                            id="pdetail-refresh-reviews-button",
+                            color="info",
+                            outline=True,
+                            className="mb-3",
+                        ),
+                        width="auto",
+                    ),
+                ],
+                justify="start",
             ),
             html.Div(id="pdetail-review-list-toast-div"),
             dcc.Loading(html.Div(id="pdetail-review-list-container")),
             review_modal,
             dcc.Store(id="force-refresh-review-list-store", data=0),
-            dcc.Interval(
-                id="pdetail-review-refresh-interval", interval=15 * 1000, n_intervals=0
-            ),  # Refresh reviews periodically for analysis updates
         ],
         fluid=True,
     )
@@ -275,22 +293,45 @@ def save_new_review(
     Output("pdetail-review-list-container", "children"),
     [
         Input("force-refresh-review-list-store", "data"),
-        Input("pdetail-review-refresh-interval", "n_intervals"),
+        Input("pdetail-refresh-reviews-button", "n_clicks"),
+        # Input("pdetail-review-refresh-interval", "n_intervals"),
         Input("pdetail-product-id-store", "data"),
         Input("jwt-token-store", "data"),
     ],
 )
-def display_review_list(refresh_trigger, interval_trigger, product_id, jwt_token):
+def display_review_list(
+    refresh_trigger_save,
+    refresh_trigger_button,
+    # interval_trigger,
+    product_id,
+    jwt_token,
+):
+    triggered_input = (
+        callback_context.triggered_id
+        if callback_context.triggered
+        else "initial load or product_id change"
+    )
+    logger.debug(
+        f"ProductDetail: Fetching reviews for product {product_id}. Trigger: {triggered_input}"
+    )
+
     if not product_id or not jwt_token:
-        return dbc.Alert("Product ID missing or not authenticated.", color="warning")
+        if triggered_input == "pdetail-refresh-reviews-button" and not product_id:
+            return dbc.Alert("Product ID missing. Cannot refresh.", color="warning")
+        if triggered_input == "pdetail-refresh-reviews-button" and not jwt_token:
+            return dbc.Alert("Not authenticated. Cannot refresh.", color="warning")
+        if not (triggered_input == "pdetail-refresh-reviews-button"):
+            return dbc.Alert(
+                "Product ID missing or not authenticated.", color="warning"
+            )
+        raise PreventUpdate
 
     headers = {"Authorization": f"Bearer {jwt_token}"}
     try:
-        # logger.debug(f"ProductDetail: Fetching reviews for product {product_id}. Trigger: {callback_context.triggered_id}")
         response = httpx.get(
             f"{API_BASE_URL}/products/{product_id}/reviews",
             headers=headers,
-            timeout=10.0,
+            timeout=30.0,
         )
         response.raise_for_status()
         reviews_data = response.json()
@@ -308,15 +349,25 @@ def display_review_list(refresh_trigger, interval_trigger, product_id, jwt_token
             analysis_display = "Analysis pending..."
             if analysis:
                 lang = analysis.get("language", "N/A")
-                sentiment = analysis.get("sentiment", "N/A")
+                sentiment_val = analysis.get("sentiment")
+                sentiment_str = "N/A"
+                if isinstance(sentiment_val, (int, float)):
+                    sentiment_str = f"{sentiment_val} ★"
+                elif sentiment_val is not None:
+                    sentiment_str = str(sentiment_val)
+
                 confidence = analysis.get("confidence", None)
-                conf_str = f"{confidence:.2f}" if confidence is not None else "N/A"
+                conf_str = (
+                    f"{confidence:.2f}"
+                    if isinstance(confidence, (int, float))
+                    else "N/A"
+                )
                 analysis_display = html.Div(
                     [
                         html.Strong("Lang: "),
-                        f"{lang.upper()}",
+                        f"{lang.upper() if lang else 'N/A'}",
                         html.Strong(" Sent: "),
-                        f"{sentiment} ★",
+                        sentiment_str,
                         html.Strong(" Conf: "),
                         conf_str,
                     ],
@@ -335,7 +386,6 @@ def display_review_list(refresh_trigger, interval_trigger, product_id, jwt_token
                             className="small",
                         ),
                         analysis_display,
-                        # html.Pre(json.dumps(r, indent=2), className="small bg-light p-2 mt-2") # For debugging
                     ]
                 ),
                 className="mb-3",
@@ -344,8 +394,33 @@ def display_review_list(refresh_trigger, interval_trigger, product_id, jwt_token
 
         return html.Div(review_items)
 
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            f"ProductDetail: HTTP status error fetching reviews for {product_id}: {e.response.status_code} - {e.request.url}"
+        )
+        error_message = e.response.text
+        try:
+            error_message = e.response.json().get("detail", e.response.text)
+        except json.JSONDecodeError:
+            pass
+        return dbc.Alert(
+            f"Could not load reviews (HTTP Error {e.response.status_code}): {error_message}",
+            color="danger",
+            className="mt-3",
+        )
+    except httpx.RequestError as e:
+        logger.error(
+            f"ProductDetail: Request error fetching reviews for {product_id}: {e.request.url} - {e}"
+        )
+        return dbc.Alert(
+            f"Could not load reviews (Request Error): {str(e)}",
+            color="danger",
+            className="mt-3",
+        )
     except Exception as e:
-        logger.error(f"ProductDetail: Error fetching reviews for {product_id}: {e}")
+        logger.error(
+            f"ProductDetail: Generic error fetching reviews for {product_id}: {e}"
+        )
         return dbc.Alert(
             f"Could not load reviews: {str(e)}", color="danger", className="mt-3"
         )

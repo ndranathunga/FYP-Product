@@ -14,7 +14,7 @@ def get_user_by_email(email: str) -> Optional[UserInDB]:
 
 def get_user_by_id(user_id: uuid.UUID) -> Optional[UserInDB]:
     query = "SELECT * FROM users WHERE id = %s"
-    user_data = fetch_one(query, (user_id,))
+    user_data = fetch_one(query, (str(user_id),))
 
     return UserInDB.model_validate(user_data) if user_data else None
 

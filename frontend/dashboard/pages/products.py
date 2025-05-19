@@ -14,6 +14,7 @@ import httpx
 from loguru import logger
 from pathlib import Path
 import sys
+import json
 
 DASH_OVERVIEW_DIR = Path(__file__).resolve().parent
 DASH_APP_DIR_O = DASH_OVERVIEW_DIR.parent
@@ -92,10 +93,8 @@ layout = dbc.Container(
         ),
         html.Div(id="product-list-toast-div"),  # For status messages
         dcc.Loading(html.Div(id="product-list-container")),
-        product_modal,  
-        dcc.Store(
-            id="force-refresh-product-list-store", data=0
-        ), 
+        product_modal,
+        dcc.Store(id="force-refresh-product-list-store", data=0),
     ],
     fluid=True,
 )
@@ -200,7 +199,11 @@ def save_product(
         else:  # This is a CREATE
             logger.info(f"Products: Creating new product: {name}")
             response = httpx.post(
-                f"{API_BASE_URL}/products", json=payload, headers=headers, timeout=10.0
+                f"{API_BASE_URL}/products/",
+                json=payload,
+                headers=headers,
+                timeout=10.0,
+                follow_redirects=True,
             )
             action_msg = "created"
 
@@ -218,7 +221,12 @@ def save_product(
         )  # Close modal, show success, trigger refresh
 
     except httpx.HTTPStatusError as e:
-        error_detail = e.response.json().get("detail", "Failed to save product.")
+        error_detail = e.response.text
+        try:
+            error_detail = e.response.json().get("detail", e.response.text)
+        except json.JSONDecodeError:
+            pass
+
         logger.error(f"Products: HTTP error saving product: {error_detail}")
         toast_msg = dbc.Toast(
             f"Error: {error_detail}", header="API Error", icon="danger", duration=4000
@@ -250,7 +258,12 @@ def display_product_list(refresh_trigger, jwt_token):
     headers = {"Authorization": f"Bearer {jwt_token}"}
     try:
         logger.info("Products: Fetching product list.")
-        response = httpx.get(f"{API_BASE_URL}/products", headers=headers, timeout=10.0)
+        response = httpx.get(
+            f"{API_BASE_URL}/products/",
+            headers=headers,
+            timeout=10.0,
+            follow_redirects=True,
+        )
         response.raise_for_status()
         products_data = response.json()
 
@@ -307,8 +320,34 @@ def display_product_list(refresh_trigger, jwt_token):
 
         return dbc.Row(cards)
 
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            f"Products: HTTP status error fetching product list: {e.response.status_code} - {e.request.url}"
+        )
+        error_message = e.response.text
+        try:
+            error_message = e.response.json().get("detail", e.response.text)
+        except json.JSONDecodeError:
+            pass
+
+        if 300 <= e.response.status_code < 400:
+            return dbc.Alert(
+                f"API Redirect Error: Received {e.response.status_code} for {e.request.url}. Expected a direct response. Details: {error_message}",
+                color="danger",
+            )
+        return dbc.Alert(
+            f"Could not load products (HTTP Error {e.response.status_code}): {error_message}",
+            color="danger",
+        )
+    except httpx.RequestError as e:
+        logger.error(
+            f"Products: Request error fetching product list: {e.request.url} - {e}"
+        )
+        return dbc.Alert(
+            f"Could not load products (Request Error): {str(e)}", color="danger"
+        )
     except Exception as e:
-        logger.error(f"Products: Error fetching product list: {e}")
+        logger.error(f"Products: Generic error fetching product list: {e}")
         return dbc.Alert(f"Could not load products: {str(e)}", color="danger")
 
 

@@ -223,7 +223,7 @@ def fetch_or_trigger_stats_overview(
             style={"position": "fixed", "top": 66, "right": 10, "width": 350},
         )
     try:
-        response = httpx.get(f"{API_BASE_URL}/stats", headers=headers, timeout=10.0)
+        response = httpx.get(f"{API_BASE_URL}/stats", headers=headers, timeout=30.0)
         response.raise_for_status()
         stats_data = response.json().get("stats", {})
         logger.success(f"Overview: Successfully fetched stats data.")

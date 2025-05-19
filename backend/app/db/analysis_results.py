@@ -28,7 +28,7 @@ def create_analysis_result_db(
     data = fetch_one(
         query,
         (
-            result.review_id,
+            str(result.review_id),
             result.language,
             result.sentiment,
             result.confidence,
@@ -42,7 +42,7 @@ def get_analysis_result_by_review_id_db(
     review_id: uuid.UUID,
 ) -> Optional[AnalysisResultItem]:
     query = "SELECT * FROM analysis_results WHERE review_id = %s"
-    data = fetch_one(query, (review_id,))
+    data = fetch_one(query, (str(review_id),))
     return AnalysisResultItem.model_validate(data) if data else None
 
 
@@ -60,7 +60,7 @@ def get_user_stats_summary_db(user_id: uuid.UUID) -> List[Dict[str, Any]]:
     WHERE p.user_id = %s AND ar.language IS NOT NULL AND ar.sentiment IS NOT NULL
     GROUP BY ar.language, ar.sentiment;
     """
-    return fetch_all(query, (user_id,))
+    return fetch_all(query, (str(user_id),))
 
 
 def get_total_reviews_processed_for_user_db(user_id: uuid.UUID) -> int:
@@ -71,7 +71,7 @@ def get_total_reviews_processed_for_user_db(user_id: uuid.UUID) -> int:
     JOIN products p ON r.product_id = p.id
     WHERE p.user_id = %s;
     """
-    result = fetch_one(query, (user_id,))
+    result = fetch_one(query, (str(user_id),))
     return result["count"] if result else 0
 
 
@@ -82,5 +82,5 @@ def get_total_reviews_in_dataset_for_user_db(user_id: uuid.UUID) -> int:
     JOIN products p ON r.product_id = p.id
     WHERE p.user_id = %s;
     """
-    result = fetch_one(query, (user_id,))
+    result = fetch_one(query, (str(user_id),))
     return result["count"] if result else 0
