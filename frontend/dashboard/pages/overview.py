@@ -1,4 +1,5 @@
-from dash import html, dcc, callback, Input, Output, State
+from dash import html, dcc, callback, Input, Output, State, callback_context
+import dash
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -33,14 +34,19 @@ except ImportError as e:
         f"Overview Page: Could not import backend_settings. Defaulting API_BASE_URL to {API_BASE_URL}. Error: {e}"
     )
 
-
 layout = dbc.Container(
     [
-        dbc.Row(dbc.Col(html.H3("Dataset Overview"), width=12, className="mb-3 mt-3")),
+        dbc.Row(
+            dbc.Col(
+                html.H3("My Review Analysis Dashboard"), width=12, className="mb-3 mt-3"
+            )
+        ),
         dbc.Row(
             [
                 dbc.Col(
-                    dcc.Loading(dbc.Card(dbc.CardBody(id="total-reviews-card"))),
+                    dcc.Loading(
+                        dbc.Card(dbc.CardBody(id="overview-total-reviews-card"))
+                    ),
                     md=4,
                     className="mb-3",
                 ),
@@ -52,7 +58,7 @@ layout = dbc.Container(
                                     html.H5(
                                         "Language Distribution", className="card-title"
                                     ),
-                                    dcc.Graph(id="language-distribution-chart"),
+                                    dcc.Graph(id="overview-language-chart"),
                                 ]
                             )
                         )
@@ -74,7 +80,7 @@ layout = dbc.Container(
                                         "Overall Sentiment (Stars)",
                                         className="card-title",
                                     ),
-                                    dcc.Graph(id="sentiment-distribution-chart"),
+                                    dcc.Graph(id="overview-sentiment-chart"),
                                 ]
                             )
                         )
@@ -91,11 +97,11 @@ layout = dbc.Container(
                                         "Sentiment by Language", className="card-title"
                                     ),
                                     dcc.Dropdown(
-                                        id="lang-dropdown-for-sentiment",
+                                        id="overview-lang-dropdown",
                                         placeholder="Select Language",
                                         className="mb-2",
                                     ),
-                                    dcc.Graph(id="sentiment-by-language-chart"),
+                                    dcc.Graph(id="overview-sentiment-by-lang-chart"),
                                 ]
                             )
                         )
@@ -106,21 +112,29 @@ layout = dbc.Container(
             ]
         ),
         dcc.Interval(
-            id="interval-component-overview", interval=30 * 1000, n_intervals=0
-        ),
+            id="overview-interval-component", interval=60 * 1000, n_intervals=0
+        ),  # Refresh every 60s
         dbc.Button(
             "Refresh Data",
-            id="refresh-stats-button-overview",
+            id="overview-refresh-stats-button",
             color="primary",
+            className="mt-2 mb-4 me-2",
+        ),
+        dbc.Button(
+            "Trigger Re-analysis",
+            id="overview-trigger-reanalysis-button",
+            color="info",
             className="mt-2 mb-4",
         ),
-        html.Div(id="stats-data-store-overview", style={"display": "none"}),
+        dcc.Store(id="overview-stats-store"),
+        html.Div(id="overview-status-toast-div"),  # For displaying messages
     ],
     fluid=True,
 )
 
 
 def create_placeholder_figure(message="Loading data..."):
+    # (Same as your existing function)
     fig = go.Figure()
     fig.add_annotation(
         text=message,
@@ -141,109 +155,126 @@ def create_placeholder_figure(message="Loading data..."):
 
 
 @callback(
-    Output("stats-data-store-overview", "children"),
     [
-        Input("refresh-stats-button-overview", "n_clicks"),
-        Input("interval-component-overview", "n_intervals"),
+        Output("overview-stats-store", "data"),
+        Output("overview-status-toast-div", "children"),
+    ],
+    [
+        Input("overview-refresh-stats-button", "n_clicks"),
+        Input("overview-trigger-reanalysis-button", "n_clicks"),
+        Input("overview-interval-component", "n_intervals"),
     ],
     State("jwt-token-store", "data"),
+    prevent_initial_call=False,  # Fetch on load
 )
-def fetch_stats_data_overview(n_clicks, n_intervals, jwt_token):
-    triggered_by = (
-        callback_context.triggered_id
-        if callback_context.triggered_id
-        else "initial load/interval"
-    )
-    logger.debug(
-        f"Fetching stats data. Triggered by: {triggered_by}, N_clicks: {n_clicks}, Interval: {n_intervals}"
-    )
-    
-    headers = {}
-    if jwt_token:
-        headers["Authorization"] = f"Bearer {jwt_token}"
-        
+def fetch_or_trigger_stats_overview(
+    refresh_clicks, trigger_clicks, n_intervals, jwt_token
+):
+    ctx = callback_context
+    triggered_id = (
+        ctx.triggered_id if ctx.triggered_id else "overview-interval-component"
+    )  # Default to interval for initial load
+
+    headers = {"Authorization": f"Bearer {jwt_token}"} if jwt_token else {}
+    toast_message = None
+
+    if triggered_id == "overview-trigger-reanalysis-button":
+        logger.info("Overview: Triggering user re-analysis.")
+        try:
+            response = httpx.post(
+                f"{API_BASE_URL}/trigger_user_reanalysis", headers=headers, timeout=10.0
+            )
+            response.raise_for_status()
+            api_data = response.json().get(
+                "stats", {}
+            )  # Backend returns a status message
+            toast_message = dbc.Toast(
+                f"Re-analysis triggered: {api_data.get('message', 'Processing...')}",
+                header="Information",
+                icon="info",
+                duration=4000,
+                is_open=True,
+                style={"position": "fixed", "top": 66, "right": 10, "width": 350},
+            )
+            # Don't return data yet, let next interval or refresh fetch it
+            return dash.no_update, toast_message
+        except Exception as e:
+            logger.error(f"Overview: Error triggering re-analysis: {e}")
+            toast_message = dbc.Toast(
+                f"Error triggering re-analysis: {str(e)}",
+                header="Error",
+                icon="danger",
+                duration=4000,
+                is_open=True,
+                style={"position": "fixed", "top": 66, "right": 10, "width": 350},
+            )
+            return dash.no_update, toast_message
+
+    # Fetch stats for refresh button or interval
+    logger.info(f"Overview: Fetching stats. Trigger: {triggered_id}")
+    if not jwt_token:
+        logger.warning("Overview: No JWT token, cannot fetch stats.")
+        return {"error": "Not authenticated"}, dbc.Toast(
+            "Authentication token not found. Please log in.",
+            header="Auth Error",
+            icon="danger",
+            duration=4000,
+            is_open=True,
+            style={"position": "fixed", "top": 66, "right": 10, "width": 350},
+        )
     try:
         response = httpx.get(f"{API_BASE_URL}/stats", headers=headers, timeout=10.0)
-        logger.trace(f"API response status code: {response.status_code} for /stats")
-        if response.status_code == 202:
-            loading_message = response.json().get("detail", "Stats are loading...")
-            logger.info(f"Stats API returned 202 (loading): {loading_message}")
-            return {"status": "loading", "message": loading_message}
         response.raise_for_status()
         stats_data = response.json().get("stats", {})
-        logger.success(
-            f"Successfully fetched stats data. Data keys: {list(stats_data.keys()) if isinstance(stats_data, dict) else 'Not a dict'}"
-        )
-        return stats_data
-    except httpx.RequestError as e:
-        logger.error(f"API Connection Error fetching stats: {e}", exc_info=True)
-        return {"error": f"API Connection Error: {e}"}
-    except httpx.HTTPStatusError as e:
-        logger.error(
-            f"API HTTP Status Error {e.response.status_code} fetching stats: {e.response.text}",
-            exc_info=True,
-        )
-        return {"error": f"API Error {e.response.status_code}: {e.response.text}"}
+        logger.success(f"Overview: Successfully fetched stats data.")
+        return stats_data, dash.no_update  # No toast on successful regular fetch
     except Exception as e:
-        logger.critical(f"Unexpected error fetching stats: {str(e)}", exc_info=True)
-        return {"error": f"Unexpected error: {str(e)}"}
+        logger.error(f"Overview: Error fetching stats: {e}")
+        return {"error": f"API Error: {str(e)}"}, dbc.Toast(
+            f"Could not fetch stats: {str(e)}",
+            header="API Error",
+            icon="danger",
+            duration=4000,
+            is_open=True,
+            style={"position": "fixed", "top": 66, "right": 10, "width": 350},
+        )
 
 
+# --- Callbacks for updating charts (largely similar to your existing ones, but with new IDs) ---
 @callback(
-    Output("total-reviews-card", "children"),
-    Input("stats-data-store-overview", "children"),
+    Output("overview-total-reviews-card", "children"),
+    Input("overview-stats-store", "data"),
 )
 def update_total_reviews_card(stats_data):
-    if (
-        not stats_data
-        or stats_data.get("error")
-        or stats_data.get("status") == "loading"
-    ):
+    if not stats_data or stats_data.get("error"):
         msg = "Loading..."
-        if stats_data and (stats_data.get("error") or stats_data.get("message")):
-            msg = stats_data.get("error") or stats_data.get("message")
-        logger.debug(f"Updating total reviews card with status/error: {msg}")
+        if stats_data and stats_data.get("error"):
+            msg = stats_data.get("error")
         return [
             html.H4("Status", className="card-title"),
             html.P(msg, className="card-text"),
         ]
-
     total_processed = stats_data.get("total_reviews_processed", "N/A")
     total_dataset = stats_data.get("total_reviews_in_dataset", "N/A")
-    logger.trace(
-        f"Updating total reviews card. Processed: {total_processed}, Dataset: {total_dataset}"
-    )
     return [
         html.H4(
             f"{total_processed} / {total_dataset}", className="card-title display-6"
         ),
-        html.P("Reviews Processed / In Dataset", className="card-text"),
+        html.P("Reviews Processed / In Your Dataset", className="card-text"),
     ]
 
 
 @callback(
-    Output("language-distribution-chart", "figure"),
-    Input("stats-data-store-overview", "children"),
+    Output("overview-language-chart", "figure"), Input("overview-stats-store", "data")
 )
 def update_language_chart(stats_data):
-    if (
-        not stats_data
-        or stats_data.get("error")
-        or stats_data.get("status") == "loading"
-    ):
-        msg = "Loading language data..."
-        if stats_data and (stats_data.get("error") or stats_data.get("message")):
-            msg = stats_data.get("error") or stats_data.get("message")
-        logger.debug(f"Language chart cannot be updated: {msg}")
-        return create_placeholder_figure(msg)
-
+    if not stats_data or stats_data.get("error"):
+        return create_placeholder_figure(
+            stats_data.get("error", "Loading language data...")
+        )
     lang_dist = stats_data.get("language_distribution")
     if not lang_dist:
-        logger.debug(
-            "Language chart: No language distribution data available in stats."
-        )
         return create_placeholder_figure("No language data available")
-    logger.trace(f"Updating language chart with data: {lang_dist}")
     df = pd.DataFrame(
         list(lang_dist.items()), columns=["Language", "Count"]
     ).sort_values("Count", ascending=False)
@@ -253,28 +284,17 @@ def update_language_chart(stats_data):
 
 
 @callback(
-    Output("sentiment-distribution-chart", "figure"),
-    Input("stats-data-store-overview", "children"),
+    Output("overview-sentiment-chart", "figure"), Input("overview-stats-store", "data")
 )
 def update_sentiment_chart(stats_data):
-    if (
-        not stats_data
-        or stats_data.get("error")
-        or stats_data.get("status") == "loading"
-    ):
-        msg = "Loading sentiment data..."
-        if stats_data and (stats_data.get("error") or stats_data.get("message")):
-            msg = stats_data.get("error") or stats_data.get("message")
-        logger.debug(f"Sentiment chart cannot be updated: {msg}")
-        return create_placeholder_figure(msg)
-
+    if not stats_data or stats_data.get("error"):
+        return create_placeholder_figure(
+            stats_data.get("error", "Loading sentiment data...")
+        )
     sent_dist = stats_data.get("overall_sentiment_distribution")
     if not sent_dist:
-        logger.debug(
-            "Sentiment chart: No overall sentiment distribution data available."
-        )
         return create_placeholder_figure("No overall sentiment data")
-    logger.trace(f"Updating sentiment chart with data: {sent_dist}")
+    # Ensure keys are strings for consistent ordering if they are numbers
     df = pd.DataFrame(list(sent_dist.items()), columns=["Stars", "Count"])
     df["Stars"] = df["Stars"].astype(str)
     df = df.sort_values("Stars")
@@ -298,20 +318,13 @@ def update_sentiment_chart(stats_data):
 
 @callback(
     [
-        Output("lang-dropdown-for-sentiment", "options"),
-        Output("lang-dropdown-for-sentiment", "value"),
+        Output("overview-lang-dropdown", "options"),
+        Output("overview-lang-dropdown", "value"),
     ],
-    Input("stats-data-store-overview", "children"),
+    Input("overview-stats-store", "data"),
 )
 def update_lang_dropdown(stats_data):
-    if (
-        not stats_data
-        or stats_data.get("error")
-        or stats_data.get("status") == "loading"
-    ):
-        logger.debug(
-            "Language dropdown cannot be updated due to missing/error in stats data."
-        )
+    if not stats_data or stats_data.get("error"):
         return [], None
     sent_by_lang = stats_data.get("sentiment_distribution_by_language", {})
     langs = sorted(list(sent_by_lang.keys()))
@@ -319,47 +332,24 @@ def update_lang_dropdown(stats_data):
         {"label": lang.upper() if lang else "Unknown", "value": lang} for lang in langs
     ]
     default_value = langs[0] if langs else None
-    logger.trace(
-        f"Updating language dropdown. Options: {len(options)}, Default: {default_value}"
-    )
     return options, default_value
 
 
 @callback(
-    Output("sentiment-by-language-chart", "figure"),
-    [
-        Input("stats-data-store-overview", "children"),
-        Input("lang-dropdown-for-sentiment", "value"),
-    ],
+    Output("overview-sentiment-by-lang-chart", "figure"),
+    [Input("overview-stats-store", "data"), Input("overview-lang-dropdown", "value")],
 )
 def update_sentiment_by_lang_chart(stats_data, selected_language):
-    if (
-        not stats_data
-        or stats_data.get("error")
-        or stats_data.get("status") == "loading"
-    ):
-        msg = "Loading data..."
-        if stats_data and (stats_data.get("error") or stats_data.get("message")):
-            msg = stats_data.get("error") or stats_data.get("message")
-        logger.debug(f"Sentiment by language chart cannot be updated: {msg}")
-        return create_placeholder_figure(msg)
+    if not stats_data or stats_data.get("error"):
+        return create_placeholder_figure(stats_data.get("error", "Loading data..."))
     if not selected_language:
-        logger.debug("Sentiment by language chart: No language selected.")
         return create_placeholder_figure("Please select a language")
-
     sent_by_lang = stats_data.get("sentiment_distribution_by_language", {})
     lang_data = sent_by_lang.get(selected_language)
     if not lang_data:
-        logger.debug(
-            f"Sentiment by language chart: No data for selected language '{selected_language}'."
-        )
         return create_placeholder_figure(
             f"No sentiment data for {selected_language.upper()}"
         )
-
-    logger.trace(
-        f"Updating sentiment by language chart for '{selected_language}'. Data: {lang_data}"
-    )
     df = pd.DataFrame(list(lang_data.items()), columns=["Stars", "Count"])
     df["Stars"] = df["Stars"].astype(str)
     df = df.sort_values("Stars")
@@ -379,6 +369,3 @@ def update_sentiment_by_lang_chart(stats_data, selected_language):
     )
     fig.update_layout(margin=dict(t=20, b=0, l=0, r=0), xaxis_title="Star Rating")
     return fig
-
-
-from dash import callback_context  # Import callback_context

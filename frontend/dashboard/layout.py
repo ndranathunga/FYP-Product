@@ -14,17 +14,18 @@ try:
 except ImportError:
     FRONTEND_BASE_URL = "/dashboard"  # Fallback
 
-base_url_stripped = FRONTEND_BASE_URL.rstrip("/")
+DASHBOARD_BASE_PATH = FRONTEND_BASE_URL.rstrip("/")
 
 navbar = dbc.NavbarSimple(
     children=[
-        dbc.NavItem(dbc.NavLink("Overview", href=f"{base_url_stripped}/")),
+        dbc.NavItem(dbc.NavLink("My Dashboard", href=f"{DASHBOARD_BASE_PATH }/")),
+        dbc.NavItem(dbc.NavLink("My Products", href=f"{DASHBOARD_BASE_PATH}/products")),
         dbc.NavItem(
-            dbc.NavLink("Test Models", href=f"{base_url_stripped}/test-models")
+            dbc.NavLink("Test Models", href=f"{DASHBOARD_BASE_PATH }/test-models")
         ),
     ],
     brand="Review Analysis Dashboard",
-    brand_href=f"{base_url_stripped}/",
+    brand_href=f"{DASHBOARD_BASE_PATH }/",
     color="primary",
     dark=True,
     className="mb-4",
@@ -33,8 +34,10 @@ navbar = dbc.NavbarSimple(
 app_layout_definition = html.Div(
     [
         dcc.Location(id="url", refresh=False),
+        dcc.Store(id="jwt-token-store", storage_type="local"),
+        dcc.Store(id="product-list-store"),
+        dcc.Store(id="selected-product-id-store"),
         navbar,
         dbc.Container(id="page-content", fluid=True),
-        dcc.Store(id="jwt-token-store", storage_type="local"),
     ]
 )

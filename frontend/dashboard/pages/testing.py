@@ -30,26 +30,30 @@ except ImportError as e:
 
 layout = dbc.Container(
     [
-        dbc.Row(dbc.Col(html.H3("Test Models"), width=12, className="mb-3 mt-3")),
+        dbc.Row(
+            dbc.Col(
+                html.H3("Test Analysis Models (Ad-hoc)"),
+                width=12,
+                className="mb-3 mt-3",
+            )
+        ),
         dbc.Row(
             dbc.Col(
                 [
-                    dbc.Label(
-                        "Enter Review Text:", html_for="review-input-text-testing"
-                    ),
+                    dbc.Label("Enter Review Text:", html_for="testing-review-input"),
                     dcc.Textarea(
-                        id="review-input-text-testing",
+                        id="testing-review-input",
                         placeholder="Enter customer review here...",
                         style={"width": "100%", "height": 100},
                         className="mb-2 form-control",
                     ),
                     dbc.Button(
                         "Analyze Review",
-                        id="analyze-button-testing",
+                        id="testing-analyze-button",
                         color="success",
                         n_clicks=0,
                         className="mt-2",
-                    ),  # n_clicks added for callback
+                    ),
                 ],
                 md=12,
             ),
@@ -57,9 +61,7 @@ layout = dbc.Container(
         ),
         dbc.Row(
             dbc.Col(
-                dcc.Loading(
-                    html.Div(id="analysis-output-display-testing", className="mt-3")
-                ),
+                dcc.Loading(html.Div(id="testing-analysis-output", className="mt-3")),
                 md=12,
             )
         ),
@@ -69,47 +71,35 @@ layout = dbc.Container(
 
 
 @callback(
-    Output("analysis-output-display-testing", "children"),
-    Input("analyze-button-testing", "n_clicks"),
-    State("review-input-text-testing", "value"),
-    State("jwt-token-store", "data"),
+    Output("testing-analysis-output", "children"),
+    Input("testing-analyze-button", "n_clicks"),
+    [
+        State("testing-review-input", "value"),
+        State("jwt-token-store", "data"),
+    ],
     prevent_initial_call=True,
 )
 def handle_analyze_review_testing(n_clicks, review_text, jwt_token):
-    logger.debug(
-        f"Analyze review button clicked (n_clicks: {n_clicks}). Review text length: {len(review_text) if review_text else 0}"
-    )
     if not review_text or not review_text.strip():
-        logger.info("Analyze review: No review text entered.")
         return dbc.Alert("Please enter some review text to analyze.", color="warning")
+    if not jwt_token:
+        return dbc.Alert("Authentication required to test models.", color="danger")
 
-    headers = {}
-    if jwt_token:
-        headers["Authorization"] = f"Bearer {jwt_token}"
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+    payload = {"text": review_text}
 
     try:
-        payload = {"text": review_text}
-        logger.trace(
-            f"Sending POST request to {API_BASE_URL}/analyze_review with payload: {payload}"
-        )
+        logger.info("TestingPage: Sending ad-hoc analysis request.")
         response = httpx.post(
-            f"{API_BASE_URL}/analyze_review",
+            f"{API_BASE_URL}/analyze_adhoc_review",
             json=payload,
             headers=headers,
             timeout=15.0,
         )
-        logger.trace(
-            f"API response status code: {response.status_code} for /analyze_review"
-        )
         response.raise_for_status()
-
         results = response.json()
-        logger.success(f"Successfully received analysis results: {results}")
-
         lang_info = results.get("language", {}) or {}
         sent_info = results.get("sentiment", {}) or {}
-
-        # Defensive formatting for confidence values
         lang_conf_str = (
             f"{lang_info.get('confidence', 'N/A'):.2f}"
             if isinstance(lang_info.get("confidence"), (int, float))
@@ -123,7 +113,7 @@ def handle_analyze_review_testing(n_clicks, review_text, jwt_token):
 
         return dbc.Card(
             [
-                dbc.CardHeader(html.H4("Analysis Results", className="m-0")),
+                dbc.CardHeader(html.H4("Ad-hoc Analysis Results", className="m-0")),
                 dbc.CardBody(
                     [
                         html.H5("Language Detection:", className="card-title"),
@@ -171,27 +161,17 @@ def handle_analyze_review_testing(n_clicks, review_text, jwt_token):
                 ),
             ]
         )
-
     except httpx.RequestError as e:
-        logger.error(f"API Connection Error during review analysis: {e}", exc_info=True)
+        logger.error(f"TestingPage: API Connection Error: {e}")
         return dbc.Alert(
             f"Could not connect to the analysis API: {e}",
             color="danger",
             className="mt-3",
         )
     except httpx.HTTPStatusError as e:
-        error_detail = e.response.text
-        try:
-            error_json = e.response.json()
-            error_detail = error_json.get("detail", error_detail)
-        except json.JSONDecodeError:  # If response is not JSON
-            logger.debug(
-                f"API error response for status {e.response.status_code} was not valid JSON."
-            )
-            pass
+        error_detail = e.response.json().get("detail", e.response.text)
         logger.error(
-            f"API HTTP Status Error {e.response.status_code} during review analysis: {error_detail}",
-            exc_info=True,
+            f"TestingPage: API HTTP Status Error {e.response.status_code}: {error_detail}"
         )
         return dbc.Alert(
             f"API Error ({e.response.status_code}): {error_detail}",
@@ -199,9 +179,7 @@ def handle_analyze_review_testing(n_clicks, review_text, jwt_token):
             className="mt-3",
         )
     except Exception as e:
-        logger.critical(
-            f"Unexpected error during review analysis: {str(e)}", exc_info=True
-        )
+        logger.critical(f"TestingPage: Unexpected error: {str(e)}")
         return dbc.Alert(
             f"An unexpected error occurred: {str(e)}", color="danger", className="mt-3"
         )
