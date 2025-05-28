@@ -18,7 +18,7 @@ DASHBOARD_BASE_PATH = FRONTEND_BASE_URL.rstrip("/")
 
 navbar = dbc.NavbarSimple(
     children=[
-        dbc.NavItem(dbc.NavLink("My Dashboard", href=f"{DASHBOARD_BASE_PATH }/")),
+        dbc.NavItem(dbc.NavLink("Overview", href=f"{DASHBOARD_BASE_PATH }/")),
         dbc.NavItem(dbc.NavLink("My Products", href=f"{DASHBOARD_BASE_PATH}/products")),
         dbc.NavItem(
             dbc.NavLink("Test Models", href=f"{DASHBOARD_BASE_PATH }/test-models")

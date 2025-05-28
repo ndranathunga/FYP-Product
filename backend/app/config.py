@@ -21,7 +21,7 @@ class ModelConfig(BaseModel):
 
 class ModelsConfig(BaseModel):
     sentiment: ModelConfig
-    language: ModelConfig
+    language: Optional[ModelConfig] = None
 
 
 class PromptsEngineConfig(BaseModel):
@@ -58,6 +58,8 @@ class DatabaseConfig(BaseModel):
     host: str = Field(default_factory=lambda: os.environ.get("host", ""))
     port: str = Field(default_factory=lambda: os.environ.get("port", "5432"))
     dbname: str = Field(default_factory=lambda: os.environ.get("dbname", ""))
+    min_connections: int = Field(default=1)
+    max_connections: int = Field(default=10)
 
 
 class JWTConfig(BaseModel):
@@ -96,7 +98,10 @@ def load_config() -> Settings:
     )
     config_data["database"] = {}
     config_data["jwt"] = {}
-    
+    config_data["models"]["sentiment"]["api_key"] = os.environ.get(
+        "RUNPOD_API_KEY", None
+    )
+
     print()
 
     loaded_settings = Settings(**config_data)

@@ -4,14 +4,18 @@ backend:
 
 models:
   sentiment:
-    type: "local" # or "api"
-    class: "LocalSentimentModel" # Explicit class name from <type>_models.py
-    # endpoint: "http://your_sentiment_api_endpoint/predict"
-    # api_key: null
-  language:
-    type: "local" # or "api"
-    class: "LocalLanguageModel" # Explicit class name
-    # endpoint: "http://your_language_api_endpoint/detect"
+    type: "api" # "local" or "api"
+    class: "RunPodAspectModel" # Explicit class name from <type>_models.py
+    endpoint: "https://api.runpod.ai/v2/d1xop2ju3yec98"
+    # api_key read from environment variable
+  # language:
+  #   type: "local" # or "api"
+  #   class: "LocalLanguageModel" # Explicit class name
+  #   # endpoint: "http://your_language_api_endpoint/detect"
+
+# database:
+#   min_connections: 2
+#   max_connections: 15
 
 prompts:
   engine:
@@ -25,7 +29,7 @@ logging:
 
   # Console Handler
   console_enabled: true
-  console_level: "DEBUG" # Level for console output specifically
+  console_level: "INFO" # Level for console output specifically
 
   # File Handler
   file_enabled: true

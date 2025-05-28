@@ -1,3 +1,4 @@
+# frontend/dashboard/pages/product_detail.py
 from dash import (
     html,
     dcc,
@@ -6,42 +7,48 @@ from dash import (
     Output,
     State,
     callback_context,
+    dash,
 )
 from dash.exceptions import PreventUpdate
-import dash
 import dash_bootstrap_components as dbc
 import httpx
 from loguru import logger
 from pathlib import Path
 import sys
 import json
+import pandas as pd  # For potential chart data manipulation
+import plotly.express as px  # For aspect summary charts
+import plotly.graph_objects as go  # For placeholder
 
-DASH_OVERVIEW_DIR = Path(__file__).resolve().parent
-DASH_APP_DIR_O = DASH_OVERVIEW_DIR.parent
-FRONTEND_DIR_O = DASH_APP_DIR_O.parent
-PROJECT_ROOT_FOR_DASH_OVERVIEW = FRONTEND_DIR_O.parent
+# --- Path Setup & API Base URL (from your existing code) ---
+DASH_DETAIL_DIR = Path(__file__).resolve().parent
+DASH_APP_DIR_PD = DASH_DETAIL_DIR.parent
+FRONTEND_DIR_PD = DASH_APP_DIR_PD.parent
+PROJECT_ROOT_FOR_DASH_DETAIL = FRONTEND_DIR_PD.parent
 
-if str(PROJECT_ROOT_FOR_DASH_OVERVIEW) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT_FOR_DASH_OVERVIEW))
+if str(PROJECT_ROOT_FOR_DASH_DETAIL) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT_FOR_DASH_DETAIL))
 
 try:
-    from backend.app.config import settings as backend_settings_overview
+    from backend.app.config import settings as backend_settings_detail
 
-    api_host = backend_settings_overview.backend.host
+    api_host = backend_settings_detail.backend.host
     if api_host == "0.0.0.0":
         api_host = "127.0.0.1"
-
-    API_BASE_URL = f"http://{api_host}:{backend_settings_overview.backend.port}/api/v1"
+    API_BASE_URL = f"http://{api_host}:{backend_settings_detail.backend.port}/api/v1"
+    FRONTEND_NAV_BASE = backend_settings_detail.frontend_base_url.rstrip("/")
     logger.trace(
-        f"Overview Page: API_BASE_URL set to {API_BASE_URL} from backend settings."
+        f"ProductDetail Page: API_BASE_URL='{API_BASE_URL}', FRONTEND_NAV_BASE='{FRONTEND_NAV_BASE}'"
     )
-except ImportError as e:
-    API_BASE_URL = "http://127.0.0.1:8000/api/v1"  # Fallback
+except ImportError:
+    API_BASE_URL = "http://127.0.0.1:8000/api/v1"
+    FRONTEND_NAV_BASE = "/dashboard"
     logger.warning(
-        f"Overview Page: Could not import backend_settings. Defaulting API_BASE_URL to {API_BASE_URL}. Error: {e}"
+        f"ProductDetail Page: Could not import backend_settings. Defaulting API_BASE_URL to {API_BASE_URL}"
     )
+# --- End Path Setup ---
 
-# --- Review Modal ---
+# --- Review Modal (from your existing code, looks good) ---
 review_modal = dbc.Modal(
     [
         dbc.ModalHeader(dbc.ModalTitle("Add New Review")),
@@ -49,9 +56,9 @@ review_modal = dbc.Modal(
             [
                 dbc.Form(
                     [
-                        dbc.Label("Review Text:", html_for="review-text-input"),
+                        dbc.Label("Review Text:", html_for="pdetail-review-text-input"),
                         dbc.Textarea(
-                            id="review-text-input",
+                            id="pdetail-review-text-input",
                             placeholder="Enter customer review text...",
                             className="mb-2",
                             required=True,
@@ -59,10 +66,10 @@ review_modal = dbc.Modal(
                         ),
                         dbc.Label(
                             "Customer ID (Optional):",
-                            html_for="review-customer-id-input",
+                            html_for="pdetail-review-customer-id-input",
                         ),
                         dbc.Input(
-                            id="review-customer-id-input",
+                            id="pdetail-review-customer-id-input",
                             type="text",
                             placeholder="Optional customer identifier",
                             className="mb-2",
@@ -73,60 +80,107 @@ review_modal = dbc.Modal(
         ),
         dbc.ModalFooter(
             [
-                dbc.Button("Save Review", id="save-review-button", color="primary"),
-                dbc.Button("Cancel", id="cancel-review-button", color="secondary"),
+                dbc.Button(
+                    "Save Review", id="pdetail-save-review-button", color="primary"
+                ),
+                dbc.Button(
+                    "Cancel", id="pdetail-cancel-review-button", color="secondary"
+                ),
             ]
         ),
     ],
-    id="review-modal",
+    id="pdetail-review-modal",
     is_open=False,
 )
 
 
-def layout(product_id=None):
+# Helper to create placeholder figures
+def create_placeholder_figure(message="Loading data..."):
+    fig = go.Figure()
+    fig.add_annotation(
+        text=message,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font=dict(size=16),
+    )
+    fig.update_layout(
+        xaxis_visible=False,
+        yaxis_visible=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
+
+def layout(product_id=None):  # product_id is passed from app.py router
     if not product_id:
         return dbc.Container(
-            dbc.Alert("No product ID specified.", color="danger"), fluid=True
+            dbc.Alert(
+                "No product ID specified. Cannot display product details.",
+                color="danger",
+            ),
+            fluid=True,
         )
 
     return dbc.Container(
         [
             dcc.Store(id="pdetail-product-id-store", data=product_id),
+            dcc.Store(
+                id="pdetail-product-data-store"
+            ),  # To store fetched product details including reviews & aspect summary
             dbc.Row(
                 [
-                    dbc.Col(html.H3(id="pdetail-product-name", className="mt-3"), md=9),
+                    dbc.Col(
+                        html.H3(id="pdetail-product-name-display", className="mt-3"),
+                        md=9,
+                    ),
                     dbc.Col(
                         dbc.Button(
-                            "Back to Products",
-                            href="/dashboard/products/",
-                            color="link",
+                            "Back to My Products",
+                            href=f"{FRONTEND_NAV_BASE}/products/",
+                            color="secondary",
+                            outline=True,
+                            size="sm",
                         ),
                         md=3,
-                        className="text-md-end mt-3",
+                        className="text-md-end mt-3 align-self-center",
                     ),
                 ]
             ),
-            html.P(id="pdetail-product-description", className="lead"),
+            html.P(
+                id="pdetail-product-description-display", className="text-muted mb-3"
+            ),
             html.Hr(),
-            html.H4("Reviews for this Product", className="mt-4 mb-3"),
+            # Section for Product's Dashboard Summary from API
+            html.H4("Product Summary Insights", className="mt-4 mb-2"),
+            dcc.Loading(html.Div(id="pdetail-dashboard-summary-display")),
+            html.Hr(),
+            # Section for Aspect Breakdown Chart (Average ratings per aspect for THIS product)
+            html.H4("Aspect Performance for this Product", className="mt-4 mb-3"),
+            dcc.Loading(dcc.Graph(id="pdetail-aspect-summary-chart")),
+            html.Hr(),
+            html.H4("Reviews & Aspect Analysis", className="mt-4 mb-3"),
             dbc.Row(
                 [
                     dbc.Col(
                         dbc.Button(
                             "Add New Review",
-                            id="add-review-open-modal-button",
+                            id="pdetail-add-review-modal-button",
                             color="success",
-                            className="mb-3 me-2",
+                            className="mb-3",
                         ),
                         width="auto",
                     ),
                     dbc.Col(
-                        dbc.Button(  # MODIFIED LINE HERE
+                        dbc.Button(
                             [
                                 html.I(className="fas fa-sync-alt me-1"),
-                                " Refresh Reviews",
+                                " Refresh Product Data",
                             ],
-                            id="pdetail-refresh-reviews-button",
+                            id="pdetail-refresh-product-data-button",
                             color="info",
                             outline=True,
                             className="mb-3",
@@ -136,291 +190,430 @@ def layout(product_id=None):
                 ],
                 justify="start",
             ),
-            html.Div(id="pdetail-review-list-toast-div"),
-            dcc.Loading(html.Div(id="pdetail-review-list-container")),
-            review_modal,
-            dcc.Store(id="force-refresh-review-list-store", data=0),
+            html.Div(id="pdetail-status-toast-div"),  # For toasts (save review, errors)
+            dcc.Loading(
+                html.Div(id="pdetail-review-list-display")
+            ),  # Container for review cards
+            review_modal,  # The modal for adding a review
         ],
         fluid=True,
     )
 
 
-# --- Callback to fetch product details ---
+# Callback to fetch ALL data for the product (details, reviews, aspect summary)
 @callback(
+    Output("pdetail-product-data-store", "data"),
     [
-        Output("pdetail-product-name", "children"),
-        Output("pdetail-product-description", "children"),
+        Input("pdetail-product-id-store", "data"),
+        Input("pdetail-refresh-product-data-button", "n_clicks"),
     ],
-    [
-        Input("pdetail-product-id-store", "data"),  # Triggered when product_id is set
-        Input("jwt-token-store", "data"),
-    ],
+    State("jwt-token-store", "data"),
+    prevent_initial_call=False,  # Fetch on initial load with product_id
 )
-def load_product_details(product_id, jwt_token):
+def fetch_full_product_data(product_id, refresh_clicks, jwt_token):
     if not product_id or not jwt_token:
-        raise PreventUpdate
+        logger.warning(
+            f"ProductDetail: Missing product_id ({product_id}) or JWT for fetching data."
+        )
+        return {"error": "Product ID or authentication token missing."}
 
     headers = {"Authorization": f"Bearer {jwt_token}"}
+    product_detail_url = (
+        f"{API_BASE_URL}/products/{product_id}"  # Endpoint to get ONE product
+    )
+    # This endpoint in products_reviews.py already populates product.reviews with their analyses
+
+    logger.info(
+        f"ProductDetail: Fetching full data for product ID {product_id}. Triggered by: {callback_context.triggered_id}"
+    )
     try:
-        logger.info(f"ProductDetail: Fetching details for product ID {product_id}")
-        response = httpx.get(
-            f"{API_BASE_URL}/products/{product_id}", headers=headers, timeout=10.0
-        )
+        response = httpx.get(product_detail_url, headers=headers, timeout=20.0)
         response.raise_for_status()
-        product_data = response.json()
-        return product_data.get("name", "Product Name"), product_data.get(
-            "description", "No description."
+        product_data = (
+            response.json()
+        )  # This is db_schemas.Product, including list of reviews with their analysis_results
+
+        # Now, we also need the aggregated aspect summary for THIS product from the /stats endpoint
+        # The /stats endpoint returns ALL products for the user. We need to extract this one.
+        stats_response = httpx.get(
+            f"{API_BASE_URL}/stats", headers=headers, timeout=20.0
         )
+        stats_response.raise_for_status()
+        user_stats_data = stats_response.json()  # This is UserProductsStatsResponse
+
+        specific_product_stats = None
+        if user_stats_data and user_stats_data.get("status") == "loaded":
+            specific_product_stats = user_stats_data.get("products_data", {}).get(
+                str(product_id)
+            )
+
+        # Combine product details from /products/{id} and specific stats from /stats
+        combined_data = {
+            "details": product_data,  # Includes reviews with raw analysis
+            "aggregated_summary": specific_product_stats,  # Includes aspects_summary and dashboard_summary
+        }
+        return combined_data
+
     except Exception as e:
         logger.error(
-            f"ProductDetail: Error fetching product details for {product_id}: {e}"
+            f"ProductDetail: Error fetching full data for product {product_id}: {e}",
+            exc_info=True,
         )
-        return f"Error loading product: {product_id}", str(e)
+        return {"error": f"Failed to load product data: {str(e)}"}
 
 
-# --- Callback to open review modal ---
+# Callback to display product name and description
 @callback(
-    Output("review-modal", "is_open"),
     [
-        Input("add-review-open-modal-button", "n_clicks"),
-        Input("cancel-review-button", "n_clicks"),
+        Output("pdetail-product-name-display", "children"),
+        Output("pdetail-product-description-display", "children"),
     ],
-    State("review-modal", "is_open"),
+    Input("pdetail-product-data-store", "data"),
+)
+def display_product_header(combined_data):
+    if (
+        not combined_data
+        or combined_data.get("error")
+        or not combined_data.get("details")
+    ):
+        return "Product Not Found", combined_data.get(
+            "error", "Could not load product details."
+        )
+    product_details = combined_data["details"]
+    return product_details.get("name", "N/A"), product_details.get(
+        "description", "No description."
+    )
+
+
+# Callback to display the product's dashboard summary
+@callback(
+    Output("pdetail-dashboard-summary-display", "children"),
+    Input("pdetail-product-data-store", "data"),
+)
+def display_dashboard_summary(combined_data):
+    if (
+        not combined_data
+        or combined_data.get("error")
+        or not combined_data.get("aggregated_summary")
+    ):
+        return dbc.Alert("Product summary data not available.", color="info")
+
+    summary_data = combined_data["aggregated_summary"].get("dashboard_summary", {})
+    if not summary_data:
+        return dbc.Alert(
+            "No dashboard summary information for this product.", color="info"
+        )
+
+    current_ratings_list = [
+        html.Li(f"{aspect}: {rating:.1f} stars")
+        for aspect, rating in summary_data.get("Current Ratings", {}).items()
+    ]
+
+    return dbc.Card(
+        dbc.CardBody(
+            [
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                html.H5(
+                                    "Average Aspect Ratings:", className="card-title"
+                                ),
+                                html.Ul(
+                                    current_ratings_list
+                                    if current_ratings_list
+                                    else [html.Li("No aspect ratings calculated.")]
+                                ),
+                            ],
+                            md=6,
+                        ),
+                        dbc.Col(
+                            [
+                                html.H5("Textual Summary:", className="card-title"),
+                                html.P(summary_data.get("Summary", "N/A")),
+                                html.H5("Recommendations:", className="card-title"),
+                                html.P(summary_data.get("Recommendations", "N/A")),
+                                html.Div(
+                                    [
+                                        html.Strong("Anomaly Detected: "),
+                                        html.Span(
+                                            str(summary_data.get("Anomaly", False)),
+                                            className=(
+                                                "fw-bold text-danger"
+                                                if summary_data.get("Anomaly")
+                                                else "fw-bold text-success"
+                                            ),
+                                        ),
+                                    ]
+                                ),
+                            ],
+                            md=6,
+                        ),
+                    ]
+                )
+            ]
+        )
+    )
+
+
+# Callback to display the aspect summary chart for THIS product
+@callback(
+    Output("pdetail-aspect-summary-chart", "figure"),
+    Input("pdetail-product-data-store", "data"),
+)
+def display_aspect_summary_chart(combined_data):
+    if (
+        not combined_data
+        or combined_data.get("error")
+        or not combined_data.get("aggregated_summary")
+    ):
+        return create_placeholder_figure("Aspect summary data not available.")
+
+    aspect_summary = combined_data["aggregated_summary"].get("aspects_summary", {})
+    if not aspect_summary:
+        return create_placeholder_figure(
+            "No aspect summary calculated for this product."
+        )
+
+    chart_data = []
+    for aspect_name, details in aspect_summary.items():
+        chart_data.append(
+            {
+                "Aspect": aspect_name,
+                "Average Rating": details.get("average_rating", 0),
+                "Review Count": details.get("review_count", 0),
+            }
+        )
+
+    if not chart_data:
+        return create_placeholder_figure("No aspect data to plot.")
+
+    df = pd.DataFrame(chart_data).sort_values("Average Rating", ascending=True)
+    fig = px.bar(
+        df,
+        y="Aspect",
+        x="Average Rating",
+        orientation="h",
+        color="Average Rating",
+        color_continuous_scale=px.colors.diverging.RdYlGn,
+        text="Average Rating",
+        title="Average Rating per Aspect for this Product",
+        hover_data=["Review Count"],
+    )
+    fig.update_traces(texttemplate="%{text:.2f} ★", textposition="outside")
+    fig.update_layout(
+        margin=dict(t=50, b=20, l=150, r=20), yaxis={"categoryorder": "total ascending"}
+    )  # Ensure aspect names are fully visible
+    return fig
+
+
+# Callback to display the list of reviews with their aspect analyses
+@callback(
+    Output("pdetail-review-list-display", "children"),
+    Input("pdetail-product-data-store", "data"),
+)
+def display_reviews_with_aspects(combined_data):
+    if (
+        not combined_data
+        or combined_data.get("error")
+        or not combined_data.get("details")
+    ):
+        return dbc.Alert(
+            "Review data not available or error loading product.", color="warning"
+        )
+
+    reviews_list = combined_data["details"].get(
+        "reviews", []
+    )  # reviews is part of Product schema
+    if not reviews_list:
+        return dbc.Alert(
+            "No reviews found for this product yet. Be the first to add one!",
+            color="info",
+        )
+
+    review_cards = []
+    for review_schema in reviews_list:  # review_schema is db_schemas.Review
+        review_text = review_schema.get("review_text", "N/A")
+        customer_id = review_schema.get("customer_id", "Anonymous")
+        created_at = review_schema.get("created_at", "")
+
+        aspect_details_components = [html.Em("Analysis pending or not available.")]
+        # analysis_results is db_schemas.AnalysisResultItem (which has result_json)
+        analysis_result_item = review_schema.get("analysis_results")
+        if analysis_result_item and analysis_result_item.get("result_json"):
+            result_json = analysis_result_item["result_json"]
+            aspects = result_json.get("aspects", [])
+            if aspects:
+                aspect_details_components = []
+                for aspect in aspects:
+                    name = aspect.get("name", "Unknown Aspect")
+                    rating = aspect.get("rating", "N/A")
+                    justification = aspect.get("justification", "No justification.")
+                    if rating == 0:
+                        rating = "N/A (Not Mentioned)"  # Clarify 0 rating
+
+                    aspect_details_components.append(
+                        dbc.ListGroupItem(
+                            [
+                                html.Div(
+                                    [
+                                        html.Strong(f"{name}: "),
+                                        html.Span(
+                                            (
+                                                f"{rating} ★"
+                                                if isinstance(rating, (int, float))
+                                                and rating > 0
+                                                else rating
+                                            ),
+                                            className=f"fw-bold {'text-success' if isinstance(rating, (int,float)) and rating >=4 else ('text-warning' if isinstance(rating, (int,float)) and rating ==3 else ('text-danger' if isinstance(rating, (int,float)) and rating <3 and rating > 0 else '')) }",
+                                        ),
+                                    ],
+                                    className="d-flex justify-content-between align-items-center",
+                                ),
+                                html.Small(justification, className="text-muted"),
+                            ],
+                            className="border-0 ps-0",
+                        )
+                    )
+            else:  # result_json exists but no aspects key
+                aspect_details_components = [
+                    html.Em("Aspect data not found in analysis result.")
+                ]
+
+        review_cards.append(
+            dbc.Card(
+                className="mb-3",
+                children=[
+                    dbc.CardBody(
+                        [
+                            html.Blockquote(
+                                className="blockquote mb-0",
+                                children=[
+                                    html.P(f'"{review_text}"'),
+                                    html.Footer(
+                                        f"Customer: {customer_id} (on {pd.to_datetime(created_at).strftime('%Y-%m-%d %H:%M') if created_at else 'N/A'})",
+                                        className="blockquote-footer",
+                                    ),
+                                ],
+                            ),
+                            html.Hr(className="my-2"),
+                            html.H6("Aspect Analysis:", className="mt-2 mb-1"),
+                            (
+                                dbc.ListGroup(aspect_details_components, flush=True)
+                                if aspect_details_components
+                                else html.P("No aspect details.")
+                            ),
+                        ]
+                    )
+                ],
+            )
+        )
+    return (
+        dbc.Row([dbc.Col(card) for card in review_cards])
+        if review_cards
+        else html.P("No reviews to display.")
+    )
+
+
+# --- Callbacks for Review Modal (Open/Close, Save) ---
+# (These are similar to your existing product_detail.py, ensure IDs are prefixed with 'pdetail-')
+@callback(
+    Output("pdetail-review-modal", "is_open"),
+    [
+        Input("pdetail-add-review-modal-button", "n_clicks"),
+        Input("pdetail-cancel-review-button", "n_clicks"),
+    ],
+    State("pdetail-review-modal", "is_open"),
     prevent_initial_call=True,
 )
-def toggle_review_modal(add_clicks, cancel_clicks, is_open):
+def toggle_review_modal_pdetail(add_clicks, cancel_clicks, is_open):
     if add_clicks or cancel_clicks:
         return not is_open
     return is_open
 
 
-# --- Callback to save a new review ---
 @callback(
     [
-        Output("review-modal", "is_open", allow_duplicate=True),
-        Output("pdetail-review-list-toast-div", "children"),
-        Output(
-            "force-refresh-review-list-store", "data"
-        ),  # Trigger review list refresh
-        Output("review-text-input", "value"),
-        Output("review-customer-id-input", "value"),
-    ],
-    Input("save-review-button", "n_clicks"),
+        Output("pdetail-review-modal", "is_open", allow_duplicate=True),
+        Output("pdetail-status-toast-div", "children"),
+        Output("pdetail-refresh-product-data-button", "n_clicks"),
+    ],  # Trigger refresh
+    Input("pdetail-save-review-button", "n_clicks"),
     [
         State("pdetail-product-id-store", "data"),
-        State("review-text-input", "value"),
-        State("review-customer-id-input", "value"),
+        State("pdetail-review-text-input", "value"),
+        State("pdetail-review-customer-id-input", "value"),
         State("jwt-token-store", "data"),
-        State("force-refresh-review-list-store", "data"),
+        State("pdetail-refresh-product-data-button", "n_clicks"),
     ],
     prevent_initial_call=True,
 )
-def save_new_review(
-    n_clicks, product_id, review_text, customer_id, jwt_token, refresh_count
+def save_new_review_pdetail(
+    n_clicks_save,
+    product_id,
+    review_text,
+    customer_id,
+    jwt_token,
+    current_refresh_clicks,
 ):
     if not product_id or not jwt_token:
         return (
             False,
             dbc.Toast(
-                "Error: Missing product ID or authentication.",
+                "Auth/Product ID missing.",
                 header="Error",
                 icon="danger",
+                duration=3000,
+                is_open=True,
             ),
             dash.no_update,
-            "",
-            "",
         )
     if not review_text:
         return (
             True,
             dbc.Toast(
-                "Review text cannot be empty.",
+                "Review text required.",
                 header="Validation Error",
                 icon="warning",
+                duration=3000,
+                is_open=True,
             ),
             dash.no_update,
-            review_text,
-            customer_id,
         )
 
     headers = {"Authorization": f"Bearer {jwt_token}"}
     payload = {"review_text": review_text, "customer_id": customer_id or None}
-    toast_msg = None
-    modal_open_on_error = True
-
+    toast_content = None
     try:
-        logger.info(f"ProductDetail: Saving review for product {product_id}")
         response = httpx.post(
             f"{API_BASE_URL}/products/{product_id}/reviews",
             json=payload,
             headers=headers,
-            timeout=10.0,
+            timeout=15.0,
         )
         response.raise_for_status()
-        toast_msg = dbc.Toast(
-            "Review added! Analysis will begin shortly.",
+        toast_content = dbc.Toast(
+            "Review added successfully! Analysis will run in background.",
             header="Success",
             icon="success",
             duration=4000,
+            is_open=True,
         )
         return (
             False,
-            toast_msg,
-            refresh_count + 1,
-            "",
-            "",
-        )  # Close modal, show success, trigger refresh, clear form
-    except httpx.HTTPStatusError as e:
-        error_detail = e.response.json().get("detail", "Failed to save review.")
-        logger.error(f"ProductDetail: HTTP error saving review: {error_detail}")
-        toast_msg = dbc.Toast(
-            f"Error: {error_detail}", header="API Error", icon="danger", duration=4000
-        )
+            toast_content,
+            (current_refresh_clicks or 0) + 1,
+        )  # Close modal, show toast, trigger refresh
     except Exception as e:
-        logger.error(f"ProductDetail: Exception saving review: {e}")
-        toast_msg = dbc.Toast(
-            f"An unexpected error occurred: {str(e)}",
-            header="Error",
+        err_msg = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            err_msg = e.response.json().get("detail", str(e))
+        logger.error(f"ProductDetail: Error saving review: {err_msg}", exc_info=True)
+        toast_content = dbc.Toast(
+            f"Error saving review: {err_msg}",
+            header="API Error",
             icon="danger",
             duration=4000,
+            is_open=True,
         )
-
-    return modal_open_on_error, toast_msg, dash.no_update, review_text, customer_id
-
-
-# --- Callback to fetch and display reviews for the product ---
-@callback(
-    Output("pdetail-review-list-container", "children"),
-    [
-        Input("force-refresh-review-list-store", "data"),
-        Input("pdetail-refresh-reviews-button", "n_clicks"),
-        # Input("pdetail-review-refresh-interval", "n_intervals"),
-        Input("pdetail-product-id-store", "data"),
-        Input("jwt-token-store", "data"),
-    ],
-)
-def display_review_list(
-    refresh_trigger_save,
-    refresh_trigger_button,
-    # interval_trigger,
-    product_id,
-    jwt_token,
-):
-    triggered_input = (
-        callback_context.triggered_id
-        if callback_context.triggered
-        else "initial load or product_id change"
-    )
-    logger.debug(
-        f"ProductDetail: Fetching reviews for product {product_id}. Trigger: {triggered_input}"
-    )
-
-    if not product_id or not jwt_token:
-        if triggered_input == "pdetail-refresh-reviews-button" and not product_id:
-            return dbc.Alert("Product ID missing. Cannot refresh.", color="warning")
-        if triggered_input == "pdetail-refresh-reviews-button" and not jwt_token:
-            return dbc.Alert("Not authenticated. Cannot refresh.", color="warning")
-        if not (triggered_input == "pdetail-refresh-reviews-button"):
-            return dbc.Alert(
-                "Product ID missing or not authenticated.", color="warning"
-            )
-        raise PreventUpdate
-
-    headers = {"Authorization": f"Bearer {jwt_token}"}
-    try:
-        response = httpx.get(
-            f"{API_BASE_URL}/products/{product_id}/reviews",
-            headers=headers,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        reviews_data = response.json()
-
-        if not reviews_data:
-            return dbc.Alert(
-                "No reviews yet for this product. Add one!",
-                color="info",
-                className="mt-3",
-            )
-
-        review_items = []
-        for r in reviews_data:
-            analysis = r.get("analysis_results")
-            analysis_display = "Analysis pending..."
-            if analysis:
-                lang = analysis.get("language", "N/A")
-                sentiment_val = analysis.get("sentiment")
-                sentiment_str = "N/A"
-                if isinstance(sentiment_val, (int, float)):
-                    sentiment_str = f"{sentiment_val} ★"
-                elif sentiment_val is not None:
-                    sentiment_str = str(sentiment_val)
-
-                confidence = analysis.get("confidence", None)
-                conf_str = (
-                    f"{confidence:.2f}"
-                    if isinstance(confidence, (int, float))
-                    else "N/A"
-                )
-                analysis_display = html.Div(
-                    [
-                        html.Strong("Lang: "),
-                        f"{lang.upper() if lang else 'N/A'}",
-                        html.Strong(" Sent: "),
-                        sentiment_str,
-                        html.Strong(" Conf: "),
-                        conf_str,
-                    ],
-                    className="small text-muted",
-                )
-
-            review_card = dbc.Card(
-                dbc.CardBody(
-                    [
-                        html.P(
-                            f"\"{r.get('review_text')}\"",
-                            className="card-text fst-italic",
-                        ),
-                        html.P(
-                            f"Customer ID: {r.get('customer_id', 'N/A')}",
-                            className="small",
-                        ),
-                        analysis_display,
-                    ]
-                ),
-                className="mb-3",
-            )
-            review_items.append(review_card)
-
-        return html.Div(review_items)
-
-    except httpx.HTTPStatusError as e:
-        logger.error(
-            f"ProductDetail: HTTP status error fetching reviews for {product_id}: {e.response.status_code} - {e.request.url}"
-        )
-        error_message = e.response.text
-        try:
-            error_message = e.response.json().get("detail", e.response.text)
-        except json.JSONDecodeError:
-            pass
-        return dbc.Alert(
-            f"Could not load reviews (HTTP Error {e.response.status_code}): {error_message}",
-            color="danger",
-            className="mt-3",
-        )
-    except httpx.RequestError as e:
-        logger.error(
-            f"ProductDetail: Request error fetching reviews for {product_id}: {e.request.url} - {e}"
-        )
-        return dbc.Alert(
-            f"Could not load reviews (Request Error): {str(e)}",
-            color="danger",
-            className="mt-3",
-        )
-    except Exception as e:
-        logger.error(
-            f"ProductDetail: Generic error fetching reviews for {product_id}: {e}"
-        )
-        return dbc.Alert(
-            f"Could not load reviews: {str(e)}", color="danger", className="mt-3"
-        )
+        return True, toast_content, dash.no_update  # Keep modal open on error

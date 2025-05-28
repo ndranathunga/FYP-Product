@@ -50,7 +50,7 @@ class Product(ProductBase):
     id: uuid.UUID
     user_id: uuid.UUID
     created_at: datetime
-    reviews: List["Review"] = []
+    review_count: int = 0
 
     class Config:
         from_attributes = True
@@ -83,27 +83,22 @@ class Review(ReviewBase):
 
 # --- Analysis Result Schemas ---
 class AnalysisResultBase(BaseModel):
-    language: Optional[str] = None
-    sentiment: Optional[int] = None
-    confidence: Optional[float] = None
-    result_json: Optional[Dict[str, Any]] = None
+    result_json: Dict[str, Any]
 
 
 class AnalysisResultCreate(AnalysisResultBase):
     review_id: uuid.UUID
 
 
-class AnalysisResultItem(
-    AnalysisResultBase
-):  # To avoid conflict with main.py's AnalysisResult
+class AnalysisResultItem(AnalysisResultBase):
     id: uuid.UUID
     review_id: uuid.UUID
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
 
 
-# Update forward references for Pydantic v2
 Product.model_rebuild()
 Review.model_rebuild()
