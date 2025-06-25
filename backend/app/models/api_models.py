@@ -226,24 +226,35 @@ class RunPodAspectModel(SentimentModelInterface):
                     logger.debug(
                         f"{method_name}: Full status_data for COMPLETED job {job_id}: {status_data}"
                     )
-
-                    output_from_status = status_data.get("output", {})
-                    logger.debug(
-                        f"{method_name}: Extracted 'output' field (type: {type(output_from_status).__name__}): {str(output_from_status)[:200]}..."
+                    logger.info(
+                        f"{method_name}: Job {job_id} COMPLETED. Status data: {status_data}"
                     )
-                    if not isinstance(output_from_status, dict):
-                        error_msg = f"Job {job_id} COMPLETED, but 'output' field is not a dictionary as expected."
-                        logger.error(
-                            f"{method_name}: {error_msg} Received 'output' type: {type(output_from_status).__name__}, value: {str(output_from_status)[:200]}"
-                        )
-                        return {
-                            "error": error_msg,
-                            "details": {"output_received": output_from_status},
-                            "job_id": job_id,
-                            "step": "completed_output_not_dict",
-                        }
-
+                    output_from_status = status_data.get("output", {})
+                    print(output_from_status)
+                    logger.info(
+                        f"{method_name}: Job {job_id} COMPLETED. Status data 'output' field: {output_from_status}"
+                    )
+                    # logger.debug(
+                    #     f"{method_name}: Extracted 'output' field (type: {type(output_from_status).__name__}): {str(output_from_status)[:200]}..."
+                    # )
+                    # if not isinstance(output_from_status, dict):
+                    #     error_msg = f"Job {job_id} COMPLETED, but 'output' field is not a dictionary as expected."
+                    #     logger.error(
+                    #         f"{method_name}: {error_msg} Received 'output' type: {type(output_from_status).__name__}, value: {str(output_from_status)[:200]}"
+                    #     ) 
+                    #     return {
+                    #         "error": error_msg,
+                    #         "details": {"output_received": output_from_status},
+                    #         "job_id": job_id,
+                    #         "step": "completed_output_not_dict",
+                    #     }
+                    logger.info(
+                        f"output_from_status type is {type(output_from_status).__name__} for job {job_id}",
+                    )
                     result_from_output = output_from_status.get("result", {})
+                    logger.info(
+                        f"{method_name}: Job {job_id} COMPLETED. Status data 'output.result' field: {result_from_output}"
+                    )
                     logger.debug(
                         f"{method_name}: Extracted 'result' field from 'output' (type: {type(result_from_output).__name__}): {str(result_from_output)[:200]}..."
                     )
@@ -258,8 +269,11 @@ class RunPodAspectModel(SentimentModelInterface):
                             "job_id": job_id,
                             "step": "completed_result_not_dict",
                         }
-
-                    raw_output_str = result_from_output.get("raw")
+                    
+                    # logger.info("result", result_from_output)
+                    
+                    raw_output_str = result_from_output
+                
                     logger.debug(
                         f"{method_name}: Extracted 'raw' field from 'output.result' (type: {type(raw_output_str).__name__}): '{str(raw_output_str)[:100]}...' for job {job_id}"
                     )
@@ -341,6 +355,11 @@ class RunPodAspectModel(SentimentModelInterface):
                                 "job_id": job_id,
                                 "step": "internal_parsed_output_none_post_json_load",
                             }
+                    elif raw_output_str and isinstance(raw_output_str, dict):
+                        logger.warning(
+                            f"{method_name} for job {job_id}: 'raw' output is a dictionary, not a string. Returning it directly."
+                        )
+                        return raw_output_str
                     else:
                         error_msg = "'raw' output string missing, not a string, or empty in COMPLETED job."
                         logger.warning(

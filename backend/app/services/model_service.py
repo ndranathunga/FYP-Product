@@ -193,6 +193,7 @@ class ModelService:
             result: Optional[Dict[str, Any]] = await prediction_method(
                 text, prompt=prompt
             )
+            
             logger.debug(
                 f"{method_name}: Raw result from model's predict method: {str(result)[:200]}..."
             )

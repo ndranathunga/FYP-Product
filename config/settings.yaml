@@ -6,7 +6,7 @@ models:
   sentiment:
     type: "api" # "local" or "api"
     class: "RunPodAspectModel" # Explicit class name from <type>_models.py
-    endpoint: "https://api.runpod.ai/v2/d1xop2ju3yec98"
+    endpoint: "https://api.runpod.ai/v2/fvf5vwc09xsq58"
     # api_key read from environment variable
   # language:
   #   type: "local" # or "api"
