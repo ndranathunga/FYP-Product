@@ -108,28 +108,22 @@ app.mount(
     name="auth-static",
 )
 
+app.mount(
+    "/landing",
+    StaticFiles(directory=PROJECT_ROOT_FOR_MAIN / "frontend/landing", html=True),
+    name="landing-static",
+)
+
 # --- V1 API router ---
 app.include_router(api_v1_router, prefix="/api/v1")
 
 app.include_router(admin_seed_router, prefix="/admin", tags=["Admin Seed Data"])
 
 # --- Root and Health Endpoints ---
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root():
-    logger.debug("API GET / (FastAPI root) called.")
-    dashboard_url_msg = (
-        "Dashboard not available (Dash app not configured or failed to load)"
-    )
-    if DASH_APP_IS_AVAILABLE and dash_app_instance and dash_app_instance.server:
-        dashboard_url_msg = settings.frontend_base_url
-
-    return {
-        "message": "Customer Review Analysis API",
-        "api_docs_url": "/docs",
-        "redoc_url": "/redoc",
-        "dashboard_url": dashboard_url_msg,
-        "health_check": "/health",
-    }
+    logger.debug("API GET / (FastAPI root) called. Redirecting to landing page.")
+    return RedirectResponse(url="/landing/index.html")
 
 
 @app.get("/health", tags=["Health Check"])

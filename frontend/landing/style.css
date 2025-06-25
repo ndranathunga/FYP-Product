@@ -1,0 +1,354 @@
+/* --- CSS Variables for Easy Theme Management --- */
+:root {
+  --primary-color: #3b82f6;
+  --primary-dark: #1d4ed8;
+  --secondary-color: #10b981;
+  --text-color: #374151;
+  --text-light: #6b7280;
+  --bg-color: #ffffff;
+  --bg-light-gray: #f9fafb;
+  --border-color: #e5e7eb;
+  --font-family: 'Inter', sans-serif;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Global Reset & Base Styles --- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* NEW: Added smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--bg-color);
+  color: var(--text-color);
+  line-height: 1.7;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* --- Header & Hero Section --- */
+.hero {
+  background: linear-gradient(to right, #2c5282, #1a365d);
+  color: white;
+  padding-bottom: 5rem;
+}
+
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 0;
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  list-style: none;
+  gap: 2rem;
+}
+
+.nav-links a {
+  color: white;
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.3s ease;
+}
+
+.nav-links a:hover {
+  opacity: 1;
+}
+
+.hero-content {
+  text-align: center;
+  padding: 4rem 0;
+}
+
+.hero-content h1 {
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.hero-content p {
+  font-size: 1.25rem;
+  max-width: 600px;
+  margin: 1.5rem auto 2.5rem;
+  opacity: 0.9;
+}
+
+.cta-button {
+  background: var(--primary-color);
+  color: white;
+  padding: 1rem 2.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.2s ease;
+  box-shadow: var(--shadow);
+}
+
+.cta-button:hover {
+  background: var(--primary-dark);
+  transform: translateY(-2px);
+}
+
+/* --- Main Content & Feature Cards --- */
+main {
+  padding-top: 6rem; /* Adjusted padding */
+}
+
+.feature-card, .feature-card-reverse {
+  display: flex;
+  align-items: center;
+  gap: 4rem;
+  background: var(--bg-light-gray);
+  padding: 3rem;
+  border-radius: 1rem;
+  margin-bottom: 4rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+}
+
+.feature-card-reverse {
+  flex-direction: row-reverse;
+}
+
+.feature-card img, .feature-card-reverse img {
+  max-width: 450px;
+  width: 100%;
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-lg);
+  object-fit: cover;
+}
+
+.feature-content {
+  flex: 1;
+}
+
+.feature-content h2 {
+  font-size: 2.25rem;
+  color: var(--primary-dark);
+  margin-bottom: 0.5rem;
+}
+
+.feature-content p {
+  font-size: 1.1rem;
+  color: var(--text-light);
+  margin-bottom: 1.5rem;
+}
+
+.feature-content ul {
+  list-style: none;
+  padding: 0;
+}
+
+.feature-content li {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.feature-content li svg {
+  width: 20px;
+  height: 20px;
+  color: var(--secondary-color);
+  margin-right: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* --- NEW: Contact Section Styles --- */
+.contact-section {
+  padding: 6rem 0;
+  background: var(--bg-color);
+}
+
+.section-title {
+  text-align: center;
+  font-size: 2.5rem;
+  color: var(--primary-dark);
+  margin-bottom: 1rem;
+}
+
+.section-subtitle {
+  text-align: center;
+  font-size: 1.1rem;
+  color: var(--text-light);
+  max-width: 600px;
+  margin: 0 auto 4rem;
+}
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 4rem;
+  align-items: flex-start;
+}
+
+.contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.info-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.info-item svg {
+  width: 24px;
+  height: 24px;
+  color: var(--primary-color);
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.info-item h4 {
+  font-size: 1.2rem;
+  color: var(--text-color);
+  margin-bottom: 0.25rem;
+}
+
+.info-item p, .info-item a {
+  font-size: 1rem;
+  color: var(--text-light);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.info-item a:hover {
+  color: var(--primary-color);
+}
+
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.contact-form input,
+.contact-form textarea {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  font-family: inherit;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--bg-light-gray);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.contact-form input:focus,
+.contact-form textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.contact-form textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.contact-form .cta-button {
+  align-self: flex-start;
+}
+/* --- END NEW --- */
+
+/* --- Footer --- */
+footer {
+  background: #1a202c;
+  text-align: center;
+  padding: 2rem 0;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* --- Animations --- */
+.fade-in {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.fade-in.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+
+/* --- Responsive Design --- */
+@media (max-width: 900px) {
+  .feature-card, .feature-card-reverse {
+    flex-direction: column;
+    text-align: center;
+    gap: 2rem;
+  }
+  .feature-content {
+    order: 2; /* Text comes after image */
+  }
+  .feature-card img, .feature-card-reverse img {
+    order: 1; /* Image comes first */
+    max-width: 100%;
+  }
+  .feature-content li {
+    justify-content: center;
+  }
+
+  /* NEW: Responsive contact grid */
+  .contact-grid {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+  }
+  .contact-info {
+    text-align: center;
+  }
+  .info-item {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .contact-form .cta-button {
+    align-self: stretch;
+  }
+}
+
+@media (max-width: 768px) {
+  nav {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .hero-content h1 {
+    font-size: 2.5rem;
+  }
+  .hero-content p {
+    font-size: 1.1rem;
+  }
+  main {
+    padding-top: 4rem; /* Adjusted padding */
+  }
+  .contact-section {
+    padding: 4rem 0;
+  }
+}

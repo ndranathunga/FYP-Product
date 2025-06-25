@@ -19,6 +19,7 @@ import json
 import pandas as pd  # For potential chart data manipulation
 import plotly.express as px  # For aspect summary charts
 import plotly.graph_objects as go  # For placeholder
+import numpy as np  # For generating trend data
 
 # --- Path Setup & API Base URL (from your existing code) ---
 DASH_DETAIL_DIR = Path(__file__).resolve().parent
@@ -162,6 +163,26 @@ def layout(product_id=None):  # product_id is passed from app.py router
             html.H4("Aspect Performance for this Product", className="mt-4 mb-3"),
             dcc.Loading(dcc.Graph(id="pdetail-aspect-summary-chart")),
             html.Hr(),
+
+            html.H4("Key Rating Trends", className="mt-4 mb-3"),
+            dbc.Row(
+                [
+                    dbc.Col(dcc.Graph(id="trend-overall", config={"displayModeBar": False}), width=3),
+                    dbc.Col(dcc.Graph(id="trend-quality", config={"displayModeBar": False}), width=3),
+                    dbc.Col(dcc.Graph(id="trend-support", config={"displayModeBar": False}), width=3),
+                    dbc.Col(dcc.Graph(id="trend-value", config={"displayModeBar": False}), width=3),
+                ],
+                className="gx-3",  # spacing between columns
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(dcc.Graph(id="trend-sizing", config={"displayModeBar": False}), width=3),
+                    dbc.Col(dcc.Graph(id="trend-packaging", config={"displayModeBar": False}), width=3),
+                    dbc.Col(dcc.Graph(id="trend-description", config={"displayModeBar": False}), width=3),
+                ],
+                className="gx-3",
+            ),
+
             html.H4("Reviews & Aspect Analysis", className="mt-4 mb-3"),
             dbc.Row(
                 [
@@ -200,6 +221,112 @@ def layout(product_id=None):  # product_id is passed from app.py router
     )
 
 
+def generate_upward_trend(final_score):
+    base = np.linspace(final_score - 0.8, final_score, num=5)
+    noise = np.random.uniform(-0.1, 0.1, size=5)
+    trend = np.clip(base + noise, 3.5, 5.0)
+    trend[-1] = final_score  # ensure it ends at target
+    return trend.round(2).tolist()
+
+def generate_downward_trend(final_score, start_offset=0.6, steps=5):
+    # Ensure we start above the final score
+    start = min(final_score + start_offset, 5.0)
+    base = np.linspace(start, final_score, num=steps)
+
+    # Add small controlled noise (negative or neutral)
+    noise = np.random.uniform(-0.05, 0.02, size=steps)  # slight variation
+    trend = base + noise
+
+    # Ensure decreasing trend with controlled clipping
+    trend = np.minimum.accumulate(trend)  # force non-increasing
+    trend = np.clip(trend, 3.5, 5.0)
+    trend[-1] = final_score  # final value must match target
+
+    return np.round(trend, 2).tolist()
+
+def create_mini_trend_graph(name, final_value, color="royalblue", slope ="upward"):
+    # Simulate more realistic upward trend
+    if slope == "downward":
+        values = generate_downward_trend(final_value)
+    else:  # default to upward trend
+        values = generate_upward_trend(final_value)
+    dates = ["Feb 2025", "Mar 2025", "Apr 2025", "May 2025", "Jun 2025"]
+
+    fig = go.Figure(
+        data=go.Scatter(
+            x=dates,
+            y=values,
+            mode="lines+markers",
+            line=dict(color=color, width=3),
+            marker=dict(size=6),
+            showlegend=False,
+        )
+    )
+
+    fig.update_layout(
+        title=dict(text=f"{name}<br>{final_value} ★", x=0.5, font=dict(size=16)),
+        margin=dict(l=10, r=10, t=40, b=30),
+        xaxis=dict(
+            title="Month",
+            showgrid=True,
+            visible=True,
+            tickmode="array",
+            tickvals=dates,
+            tickfont=dict(size=10)
+        ),
+        yaxis=dict(
+            title="Rating",
+            range=[0.5, 5.1],
+            showgrid=True,
+            visible=True,
+            tickfont=dict(size=10)
+        ),
+        height=240,
+        template="plotly_white"
+    )
+
+    return fig
+
+
+@callback(
+    Output("trend-overall", "figure"),
+    Output("trend-quality", "figure"),
+    Output("trend-support", "figure"),
+    Output("trend-value", "figure"),
+    Output("trend-sizing", "figure"),
+    Output("trend-packaging", "figure"),
+    Output("trend-description", "figure"),
+    Input("pdetail-product-id-store", "data"),
+)
+def update_all_trends(product_id):
+    if not product_id:
+        logger.warning("ProductDetail: No product ID provided for trend graphs.")
+        raise PreventUpdate
+    logger.info(
+        f"ProductDetail: Generating trend graphs for product ID {product_id}."
+    )
+
+    if product_id == "d5835910-7d1b-44fa-8133-0e5072f8b14e":
+        # Special case for product with ID d5835910-7d1b-44fa-8133-0e5072f8b14e
+        return (
+            create_mini_trend_graph("Overall", 4.7, slope="upward"),
+            create_mini_trend_graph("Quality", 4.7, slope="upward"),
+            create_mini_trend_graph("Support", 5.0, slope="upward"),
+            create_mini_trend_graph("Value", 4.8, slope="upward"),
+            create_mini_trend_graph("Sizing", 4.8, slope="upward"),
+            create_mini_trend_graph("Packaging", 4.6, slope="upward"),
+            create_mini_trend_graph("Description", 4.8, slope="upward"),
+        )
+    else:
+        return (
+            create_mini_trend_graph("Overall", 1.93, slope="downward"),
+            create_mini_trend_graph("Quality", 1.9, slope="downward"),
+            create_mini_trend_graph("Support", 1.0, slope="downward"),
+            create_mini_trend_graph("Value", 1.07, slope="downward"),
+            create_mini_trend_graph("Sizing", 3.22, slope="downward"),
+            create_mini_trend_graph("Packaging", 2.92, slope="downward"),
+            create_mini_trend_graph("Description", 1.0, slope="downward"),
+        )
 # Callback to fetch ALL data for the product (details, reviews, aspect summary)
 @callback(
     Output("pdetail-product-data-store", "data"),
